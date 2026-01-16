@@ -1,0 +1,6 @@
+# Work Brewfile (additions to base Brewfile)
+# These packages are installed only for work environments
+
+cask "microsoft-outlook"                # Microsoft Outlook email client
+cask "slack"                            # Team communication
+cask "reflector"                        # Mobile screen mirroring

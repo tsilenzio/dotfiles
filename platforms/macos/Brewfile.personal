@@ -1,0 +1,12 @@
+# Personal Brewfile (additions to base Brewfile)
+# These packages are installed only for personal environments
+
+cask "microsoft-word"                   # Word from Microsoft Office Suite
+cask "microsoft-excel"                  # Excel from Microsoft Office Suite
+cask "godot-mono"                       # Godot game engine (C# support)
+cask "unity-hub"                        # Unity game engine manager
+cask "robloxstudio"                     # Roblox game development
+cask "roblox"                           # Roblox gaming platform
+cask "steam"                            # Steam gaming platform
+cask "moonlight"                        # Game streaming
+cask "parsec"                           # Remote desktop/gaming

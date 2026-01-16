@@ -1,0 +1,14 @@
+# Logs
+logs/
+
+# macOS system files
+.DS_Store
+._*
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Backup files created by install.sh
+*.backup.*

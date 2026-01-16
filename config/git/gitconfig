@@ -1,0 +1,36 @@
+[core]
+	editor = hx
+	pager = delta
+	excludesfile = ~/.gitignore
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = false
+
+[push]
+	default = current
+	autoSetupRemote = true
+
+[branch]
+	autoSetupMerge = always
+
+[delta]
+	navigate = true
+	light = false
+	side-by-side = true
+	line-numbers = true
+
+[merge]
+	conflictstyle = diff3
+
+[diff]
+	colorMoved = default
+
+[interactive]
+	diffFilter = delta --color-only
+
+[user]
+	name = Taylor Silenzio
+	email = taylor@silenz.io

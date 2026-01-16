@@ -1,0 +1,21 @@
+[settings]
+# Enable idiomatic version files (.nvmrc, .node-version, .python-version, etc.)
+idiomatic_version_file_enable_tools = ["node", "go", "python"]
+
+# Auto-install missing tools when entering a project directory
+not_found_auto_install = true
+
+# Trust config files in code directories without prompts
+trusted_config_paths = ["/Volumes/Code"]
+
+[env]
+MISE_DEFAULT_CONFIG_FILENAME = "mise.local.toml"
+
+[tools]
+node = "lts"
+pnpm = "latest"
+rust = "latest"
+go = "latest"
+python = "latest"
+zig = "latest"
+lua = "latest"

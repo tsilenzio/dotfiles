@@ -1,0 +1,467 @@
+# ============================================================================
+# Oh-My-Zsh Replacement Settings
+# ============================================================================
+# This file contains all the settings that Oh-My-Zsh provides by default.
+# Review each section and decide what you want to keep.
+#
+# To use: source this file from your main zshrc
+# Usage: source ~/.dotfiles/zshrc.omz
+# ============================================================================
+
+# ============================================================================
+# HISTORY CONFIGURATION
+# ============================================================================
+# Where history is stored and how much to keep
+[ -z "$HISTFILE" ] && HISTFILE="$HOME/.zsh_history"
+[ "$HISTSIZE" -lt 50000 ] && HISTSIZE=50000      # Lines in memory
+[ "$SAVEHIST" -lt 10000 ] && SAVEHIST=10000      # Lines saved to file
+
+# History behavior options
+setopt extended_history          # Record timestamp of command (format: : <beginning time>:<elapsed seconds>;<command>)
+setopt hist_expire_dups_first    # Delete duplicates first when trimming history
+setopt hist_ignore_dups          # Don't record an entry that was just recorded again
+setopt hist_ignore_space         # Don't record commands starting with a space
+setopt hist_verify               # Show command with history expansion before running it
+setopt share_history             # Share history between all sessions
+
+# ============================================================================
+# COMPLETION SYSTEM
+# ============================================================================
+# Load and configure the completion system
+zmodload -i zsh/complist         # Load completion list module
+autoload -Uz compinit            # Load completion system
+compinit -u                      # Initialize (skip security check with -u)
+
+# Completion behavior
+unsetopt menu_complete           # Don't autoselect first completion entry
+unsetopt flowcontrol             # Disable flow control (Ctrl+S/Ctrl+Q)
+setopt auto_menu                 # Show completion menu on successive tab press
+setopt complete_in_word          # Allow completion from within a word
+setopt always_to_end             # Move cursor to end of word after completion
+
+# Completion styling
+zstyle ':completion:*:*:*:*:*' menu select                    # Use arrow keys to navigate menu
+zstyle ':completion:*' matcher-list 'm:{[:lower:][:upper:]}={[:upper:][:lower:]}' 'r:|=*' 'l:|=* r:|=*'  # Case-insensitive, partial-word, substring completion
+zstyle ':completion:*' list-colors ''                         # Enable colored completion
+zstyle ':completion:*' special-dirs true                      # Complete . and .. directories
+zstyle ':completion:*' use-cache yes                          # Use cache for faster completions
+zstyle ':completion:*' cache-path ~/.zsh/cache                # Cache location
+
+# Process completion styling
+if [[ "$OSTYPE" = solaris* ]]; then
+  zstyle ':completion:*:*:*:*:processes' command "ps -u $USERNAME -o pid,user,comm"
+else
+  zstyle ':completion:*:*:*:*:processes' command "ps -u $USERNAME -o pid,user,comm -w -w"
+fi
+zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#) ([0-9a-z-]#)*=01;34=0=01'
+
+# Directory completion - prioritize local directories
+zstyle ':completion:*:cd:*' tag-order local-directories directory-stack path-directories
+
+# Don't complete uninteresting system users
+zstyle ':completion:*:*:*:users' ignored-patterns \
+        adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
+        clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
+        gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
+        ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
+        named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
+        operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
+        rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
+        usbmux uucp vcsa wwwrun xfs '_*'
+
+# Enable bash completion compatibility
+autoload -U +X bashcompinit && bashcompinit
+
+# ============================================================================
+# KEY BINDINGS
+# ============================================================================
+# Use emacs keybindings (vs vi mode)
+bindkey -e
+
+# Make terminal work correctly (application mode)
+if (( ${+terminfo[smkx]} )) && (( ${+terminfo[rmkx]} )); then
+  function zle-line-init() {
+    echoti smkx
+  }
+  function zle-line-finish() {
+    echoti rmkx
+  }
+  zle -N zle-line-init
+  zle -N zle-line-finish
+fi
+
+# History search with arrow keys
+# Start typing + Up/Down = search history for commands starting with what you typed
+autoload -U up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+
+bindkey "^[[A" up-line-or-beginning-search      # Up arrow
+bindkey "^[[B" down-line-or-beginning-search    # Down arrow
+if [[ -n "${terminfo[kcuu1]}" ]]; then
+  bindkey "${terminfo[kcuu1]}" up-line-or-beginning-search
+fi
+if [[ -n "${terminfo[kcud1]}" ]]; then
+  bindkey "${terminfo[kcud1]}" down-line-or-beginning-search
+fi
+
+# Page Up/Down - Move through history
+if [[ -n "${terminfo[kpp]}" ]]; then
+  bindkey "${terminfo[kpp]}" up-line-or-history      # Page Up
+fi
+if [[ -n "${terminfo[knp]}" ]]; then
+  bindkey "${terminfo[knp]}" down-line-or-history    # Page Down
+fi
+
+# Home/End keys
+if [[ -n "${terminfo[khome]}" ]]; then
+  bindkey "${terminfo[khome]}" beginning-of-line     # Home
+fi
+if [[ -n "${terminfo[kend]}" ]]; then
+  bindkey "${terminfo[kend]}" end-of-line            # End
+fi
+
+# Shift-Tab to go backwards in completion menu
+if [[ -n "${terminfo[kcbt]}" ]]; then
+  bindkey "${terminfo[kcbt]}" reverse-menu-complete
+fi
+
+# Delete keys
+bindkey '^?' backward-delete-char                    # Backspace
+if [[ -n "${terminfo[kdch1]}" ]]; then
+  bindkey "${terminfo[kdch1]}" delete-char           # Delete
+else
+  bindkey "^[[3~" delete-char
+  bindkey "^[3;5~" delete-char
+fi
+
+# Ctrl + arrow keys to move by word
+bindkey '^[[1;5C' forward-word                       # Ctrl+Right
+bindkey '^[[1;5D' backward-word                      # Ctrl+Left
+bindkey '^[[3;5~' kill-word                          # Ctrl+Delete
+
+# Other useful bindings
+bindkey '^r' history-incremental-search-backward     # Ctrl+R for reverse history search
+bindkey ' ' magic-space                              # Space doesn't do history expansion
+bindkey '\ew' kill-region                            # Esc+W to kill region
+bindkey "^[m" copy-prev-shell-word                   # Alt+M copy previous word
+
+# Edit command line in $VISUAL/$EDITOR
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '\C-x\C-e' edit-command-line                 # Ctrl+X Ctrl+E
+
+# Completion menu navigation
+bindkey -M menuselect '^o' accept-and-infer-next-history
+
+# ============================================================================
+# DIRECTORY NAVIGATION
+# ============================================================================
+# Typing a directory name changes to it
+setopt auto_cd                   # Type 'Desktop' instead of 'cd Desktop'
+
+# Directory stack - remembers your cd history
+setopt auto_pushd                # Push directories onto stack automatically
+setopt pushd_ignore_dups         # Don't push duplicates onto stack
+setopt pushdminus                # Swap meaning of +/- in directory stack
+
+# ============================================================================
+# MISCELLANEOUS SHELL OPTIONS
+# ============================================================================
+setopt multios                   # Enable redirect to multiple streams (echo >file1 >file2)
+setopt long_list_jobs            # Show long format job notifications
+setopt interactivecomments       # Allow comments in interactive shells (useful for copy/paste)
+
+# URL quoting and paste magic (makes pasting URLs easier)
+autoload -Uz is-at-least
+if [[ $DISABLE_MAGIC_FUNCTIONS != true ]]; then
+  for d in $fpath; do
+    if [[ -e "$d/url-quote-magic" ]]; then
+      if is-at-least 5.1; then
+        autoload -Uz bracketed-paste-magic
+        zle -N bracketed-paste bracketed-paste-magic
+      fi
+      autoload -Uz url-quote-magic
+      zle -N self-insert url-quote-magic
+    break
+    fi
+  done
+fi
+
+# ============================================================================
+# ALIASES - DIRECTORY NAVIGATION
+# ============================================================================
+# Shortcuts for going up directories
+alias -g ...='../..'
+alias -g ....='../../..'
+alias -g .....='../../../..'
+alias -g ......='../../../../..'
+
+# Directory stack navigation (use with 'cd -' or 'cd -1')
+alias -- -='cd -'                # Go to previous directory
+alias 1='cd -1'                  # Go to 1st directory in stack
+alias 2='cd -2'                  # Go to 2nd directory in stack
+alias 3='cd -3'
+alias 4='cd -4'
+alias 5='cd -5'
+alias 6='cd -6'
+alias 7='cd -7'
+alias 8='cd -8'
+alias 9='cd -9'
+
+# Convenience aliases
+alias md='mkdir -p'              # Make directory and parents
+alias rd=rmdir                   # Remove directory
+
+# Show directory stack
+function d () {
+  if [[ -n $1 ]]; then
+    dirs "$@"
+  else
+    dirs -v | head -n 10
+  fi
+}
+compdef _dirs d
+
+# ============================================================================
+# ALIASES - LS (respects eza if available)
+# ============================================================================
+# These check if eza is installed and use it, otherwise fall back to ls
+if command -v eza &> /dev/null; then
+    alias ls='eza'
+    alias l='eza -lah'           # Long, all files, human-readable
+    alias ll='eza -lh'           # Long, human-readable
+    alias la='eza -lAh'          # Long, almost-all (no . ..), human-readable
+    alias lsa='eza -lah'         # Same as l
+else
+    alias lsa='ls -lah'
+    alias l='ls -lah'
+    alias ll='ls -lh'
+    alias la='ls -lAh'
+fi
+
+# ============================================================================
+# ALIASES - MISCELLANEOUS
+# ============================================================================
+alias _='sudo '                  # Use 'sudo' with '_' prefix (e.g., _ apt install)
+alias history='fc -l 1'          # Show full history
+
+# Pager setup
+if (( ${+commands[less]} )); then
+  export PAGER='less'
+  export LESS='-R'               # Raw control chars (enables colors in less)
+elif (( ${+commands[more]} )); then
+  export PAGER='more'
+fi
+
+# ============================================================================
+# GIT PLUGIN - HELPER FUNCTIONS
+# ============================================================================
+# These are used by aliases below
+
+# Get the current branch name
+# (This is actually defined in Oh-My-Zsh core, but included here for completeness)
+function git_current_branch() {
+  git branch --show-current 2> /dev/null
+}
+
+# Get the main branch name (main, master, trunk, etc.)
+function git_main_branch() {
+  command git rev-parse --git-dir &>/dev/null || return
+
+  local ref
+  for ref in refs/{heads,remotes/{origin,upstream}}/{main,trunk,mainline,default,stable,master}; do
+    if command git show-ref -q --verify $ref; then
+      echo ${ref:t}
+      return 0
+    fi
+  done
+
+  # Fallback to origin/HEAD
+  for remote in origin upstream; do
+    ref=$(command git rev-parse --abbrev-ref $remote/HEAD 2>/dev/null)
+    if [[ $ref == $remote/* ]]; then
+      echo ${ref#"$remote/"}
+      return 0
+    fi
+  done
+
+  echo master
+  return 1
+}
+
+# Get the develop branch name (develop, dev, devel, development)
+function git_develop_branch() {
+  command git rev-parse --git-dir &>/dev/null || return
+  local branch
+  for branch in dev devel develop development; do
+    if command git show-ref -q --verify refs/heads/$branch; then
+      echo $branch
+      return 0
+    fi
+  done
+
+  echo develop
+  return 1
+}
+
+# Rename a git branch locally and remotely
+function grename() {
+  if [[ -z "$1" || -z "$2" ]]; then
+    echo "Usage: grename old_branch new_branch"
+    return 1
+  fi
+
+  git branch -m "$1" "$2"
+  if git push origin :"$1"; then
+    git push --set-upstream origin "$2"
+  fi
+}
+
+# Go to git repository root
+alias grt='cd "$(git rev-parse --show-toplevel || echo .)"'
+
+# ============================================================================
+# GIT PLUGIN - ALIASES (Basic & Common)
+# ============================================================================
+# Note: Oh-My-Zsh has 200+ git aliases. These are the most commonly used ones.
+# For the full list, see: https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git
+
+alias g='git'
+
+# Add
+alias ga='git add'
+alias gaa='git add --all'
+alias gapa='git add --patch'
+
+# Branch
+alias gb='git branch'
+alias gba='git branch -a'                        # All branches (local + remote)
+alias gbd='git branch -d'                        # Delete branch (safe)
+alias gbD='git branch -D'                        # Delete branch (force)
+
+# Delete merged branches (keeps main/develop/master)
+function gbda() {
+  git branch --no-color --merged | command grep -vE "^([+*]|\s*($(git_main_branch)|$(git_develop_branch))\s*$)" | command xargs git branch -d 2>/dev/null
+}
+
+# Checkout
+alias gco='git checkout'
+alias gcb='git checkout -b'                      # Create and checkout new branch
+alias gcm='git checkout $(git_main_branch)'      # Checkout main branch
+alias gcd='git checkout $(git_develop_branch)'   # Checkout develop branch
+
+# Clone
+alias gcl='git clone --recurse-submodules'
+
+# Clone and cd into repo
+function gccd() {
+  setopt localoptions extendedglob
+  local repo="${${@[(r)(ssh://*|git://*|ftp(s)#://*|http(s)#://*|*@*)(.git/#)#]}:-$_}"
+  command git clone --recurse-submodules "$@" || return
+  [[ -d "$_" ]] && cd "$_" || cd "${${repo:t}%.git/#}"
+}
+compdef _git gccd=git-clone
+
+# Commit
+alias gc='git commit -v'                         # Verbose commit
+alias gca='git commit -v -a'                     # Commit all changes
+alias gcam='git commit -a -m'                    # Commit all with message
+alias gcmsg='git commit -m'                      # Commit with message
+alias gca!='git commit -v -a --amend'            # Amend all changes
+alias gc!='git commit -v --amend'                # Amend commit
+alias gcn!='git commit -v --no-edit --amend'     # Amend without editing message
+
+# Config
+alias gcf='git config --list'
+
+# Diff
+alias gd='git diff'
+alias gdca='git diff --cached'                   # Diff staged changes
+alias gds='git diff --staged'                    # Same as above
+alias gdw='git diff --word-diff'                 # Word diff
+
+# View diff in $EDITOR
+function gdv() { git diff -w "$@" | view - }
+compdef _git gdv=git-diff
+
+# Fetch
+alias gf='git fetch'
+alias gfa='git fetch --all --prune --jobs=10'    # Fetch from all remotes
+alias gfo='git fetch origin'
+
+# Log
+alias glog='git log --oneline --decorate --graph'
+alias gloga='git log --oneline --decorate --graph --all'
+alias glol='git log --graph --pretty="%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset"'
+alias glola='git log --graph --pretty="%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset" --all'
+alias glo='git log --oneline --decorate'
+
+# Merge
+alias gm='git merge'
+alias gma='git merge --abort'
+
+# Pull
+alias gl='git pull'
+alias gup='git pull --rebase'                    # Pull with rebase
+alias gupa='git pull --rebase --autostash'       # Pull with rebase and autostash
+
+# Push
+alias gp='git push'
+alias gpf='git push --force-with-lease'          # Force push (safer)
+alias gpf!='git push --force'                    # Force push (dangerous!)
+alias gpsup='git push --set-upstream origin $(git_current_branch)'
+
+# Rebase
+alias grb='git rebase'
+alias grba='git rebase --abort'
+alias grbc='git rebase --continue'
+alias grbi='git rebase -i'
+alias grbm='git rebase $(git_main_branch)'       # Rebase onto main
+
+# Remote
+alias gr='git remote'
+alias gra='git remote add'
+alias grv='git remote -v'                        # Show remotes verbosely
+
+# Reset
+alias grh='git reset'
+alias grhh='git reset --hard'
+alias groh='git reset origin/$(git_current_branch) --hard'
+
+# Restore
+alias grs='git restore'
+alias grss='git restore --source'
+alias grst='git restore --staged'
+
+# Status
+alias gst='git status'
+alias gss='git status -s'                        # Short status
+alias gsb='git status -sb'                       # Short status with branch
+
+# Stash
+alias gsta='git stash'
+alias gstp='git stash pop'
+alias gstl='git stash list'
+alias gstd='git stash drop'
+
+# Show
+alias gsw='git show'
+alias gsh='git show'
+
+# Tag
+alias gt='git tag'
+alias gta='git tag -a'                           # Annotated tag
+
+# ============================================================================
+# VIRTUALENV PLUGIN (If you use Python virtual environments)
+# ============================================================================
+# Oh-My-Zsh virtualenv plugin adds prompt info about active virtualenv
+# You may not need this if Starship handles it, but keeping for reference
+
+# Disable default virtualenv prompt modification (let Starship handle it)
+export VIRTUAL_ENV_DISABLE_PROMPT=1
+
+# ============================================================================
+# END OF OH-MY-ZSH REPLACEMENT SETTINGS
+# ============================================================================

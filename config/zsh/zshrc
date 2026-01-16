@@ -1,0 +1,64 @@
+# ============================================================================
+# Zsh Configuration
+# ============================================================================
+
+# Load Oh-My-Zsh replacement settings
+if [[ -f ~/.dotfiles/config/zsh/zshrc.omz ]]; then
+    source ~/.dotfiles/config/zsh/zshrc.omz
+fi
+
+# ============================================================================
+# Environment Variables
+# ============================================================================
+export COPYFILE_DISABLE=1               # Don't create ._* files on macOS
+
+# ============================================================================
+# PATH Configuration
+# ============================================================================
+# Home directory tools (highest priority)
+export PATH=$HOME/bin:$HOME/.local/bin:$PATH
+
+# Flutter packages
+export PATH=$PATH:$HOME/.pub-cache/bin
+
+# JetBrains Toolbox (if installed)
+[[ -d "$HOME/Library/Application Support/JetBrains/Toolbox/scripts" ]] && \
+    export PATH="$PATH:$HOME/Library/Application Support/JetBrains/Toolbox/scripts"
+
+# ============================================================================
+# Tool Initialization
+# ============================================================================
+# Homebrew (already done in zshenv for non-interactive shells)
+if [[ -o interactive ]]; then
+    # Mise (replaces asdf/rbenv/nvm/etc)
+    command -v mise &> /dev/null && eval "$(mise activate zsh)"
+
+    # Zoxide (smart cd)
+    command -v zoxide &> /dev/null && eval "$(zoxide init zsh)"
+
+    # FZF key bindings (if installed)
+    if [[ -f ~/.fzf.zsh ]]; then
+        source ~/.fzf.zsh
+    elif command -v fzf &> /dev/null; then
+        eval "$(fzf --zsh)"
+    fi
+fi
+
+# ============================================================================
+# Completions
+# ============================================================================
+# Docker CLI completions (if Docker installed)
+[[ -d "$HOME/.docker/completions" ]] && fpath=($HOME/.docker/completions $fpath)
+
+# Dart CLI completions (if Dart installed)
+[[ -f "$HOME/.dart-cli-completion/zsh-config.zsh" ]] && source "$HOME/.dart-cli-completion/zsh-config.zsh"
+
+# ============================================================================
+# Aliases
+# ============================================================================
+alias vim="nvim"
+
+# ============================================================================
+# Prompt (Starship)
+# ============================================================================
+command -v starship &> /dev/null && eval "$(starship init zsh)"

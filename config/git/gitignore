@@ -1,0 +1,8 @@
+# Local environment overrides
+mise.local.toml
+
+# Temporary files
+tmp/
+
+# Private/sensitive files (not for repos)
+.private/
