@@ -57,7 +57,9 @@ just dev              # Show available dev commands
 just dev setup        # Install CLT + Homebrew from cached installers
 just dev prefetch     # Pre-fetch packages (see profiles below)
 just dev bootstrap    # Run bootstrap.sh with --with-hidden test (shows test profile)
+just dev bootstrap curl  # Emulate curl|bash behavior
 just dev install      # Run install.sh with --with-hidden test (shows test profile)
+just dev lint         # Run shellcheck + zsh syntax checks
 ```
 
 ### Prefetch Profiles
@@ -65,6 +67,7 @@ just dev install      # Run install.sh with --with-hidden test (shows test profi
 ```bash
 just dev prefetch              # test only (default, minimal)
 just dev prefetch core         # Core profile packages
+just dev prefetch develop      # Core + develop packages
 just dev prefetch work         # Core + work packages
 just dev prefetch personal     # Core + personal packages
 just dev prefetch all          # All profiles
@@ -110,9 +113,10 @@ profiles/
 │   ├── Brewfile
 │   ├── profile.conf
 │   └── setup.sh
+├── develop/        # Development tools, IDEs (requires core)
 ├── personal/       # Gaming, entertainment (requires core)
 ├── work/           # Office, communication (requires core)
-└── test/           # Minimal VM testing (no dependencies)
+└── test/           # Minimal VM testing (hidden, no dependencies)
 ```
 
 Each profile has:

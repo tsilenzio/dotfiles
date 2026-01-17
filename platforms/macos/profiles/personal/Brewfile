@@ -10,3 +10,8 @@ cask "roblox"                           # Roblox gaming platform
 cask "steam"                            # Steam gaming platform
 cask "moonlight"                        # Game streaming
 cask "parsec"                           # Remote desktop/gaming
+
+# Productivity & Communication
+cask "spotify"                          # Music streaming
+cask "zoom"                             # Video conferencing
+cask "conductor"                        # Window/app switcher

@@ -1,7 +1,3 @@
-# Taps
-tap "jorgelbg/tap"
-tap "sijanc147/formulas"
-
 # Shell & Navigation
 brew "zsh"                              # Modern shell
 brew "starship"                         # Modern prompt
@@ -16,129 +12,35 @@ brew "fd"                               # Simple find alternative
 brew "bat"                              # Cat with syntax highlighting
 brew "eza"                              # Modern ls replacement
 brew "sd"                               # Better sed alternative
-# brew "sad"                            # CLI search & replace (evaluate)
-# brew "walk"                           # Terminal file picker (evaluate)
 
 # Git & Version Control
 brew "git"                              # Version control
-brew "gh"                               # GitHub CLI
-brew "git-delta"                        # Syntax-highlighting diff viewer
-brew "delta"                            # Standalone delta
-brew "lazygit"                          # TUI for git operations
-brew "gnupg"                            # GPG signing
-brew "pinentry-mac"                     # GPG GUI pinentry
-brew "jorgelbg/tap/pinentry-touchid"   # Touch ID for GPG
-brew "bfg"                              # Git repo cleaner
-# brew "tig"                            # Text-mode git interface (evaluate)
-# brew "git-extras"                     # Git utilities collection (evaluate)
-# brew "gitui"                          # Blazing fast git TUI (evaluate)
-# brew "gh-dash"                        # GitHub dashboard (evaluate)
-# brew "grit"                           # Multi-repo management (evaluate)
-
-# Data Processing
-brew "jq"                               # JSON processor
-brew "yq"                               # YAML/TOML/JSON processor
-# brew "fx"                             # Interactive JSON viewer (evaluate)
-# brew "jless"                          # JSON viewer (evaluate)
-# brew "dyff"                           # YAML diff tool (evaluate)
-# brew "yamllint"                       # YAML linter (evaluate)
 
 # System Utilities
 brew "fileicon"                         # Set custom app icons from CLI
 brew "wget"                             # File downloader
 brew "rsync"                            # File sync
-brew "watch"                            # Command monitoring
-brew "watchman"                         # File watcher (Meta)
 brew "displayplacer"                    # Monitor arrangement automation
 brew "dockutil"                         # Dock customization tool
 brew "coreutils"                        # GNU core utilities
-# brew "dust"                           # Modern du alternative (evaluate)
-# brew "duf"                            # Modern df alternative (evaluate)
-
-# Network Tools
-# brew "mtr"                            # Better traceroute/ping (evaluate)
-# brew "dog"                            # Modern dig alternative (evaluate)
-# brew "bandwhich"                      # Network bandwidth monitor (evaluate)
-
-# HTTP/API Tools
-# brew "xh"                             # Modern HTTP client (evaluate)
-# brew "curlie"                         # Curl with httpie UI (evaluate)
-# brew "httpie"                         # Human-friendly HTTP client (evaluate)
-# brew "hurl"                           # HTTP request runner (evaluate)
-# brew "oha"                            # HTTP load testing (evaluate)
 
 # Security & Secrets
 brew "age"                              # Modern encryption
 brew "sops"                             # Secrets management
-# brew "gitleaks"                       # Scan for secrets in repos (evaluate)
-# brew "trufflehog"                     # Find secrets in git history (evaluate)
-
-# Cloud & Backup
-# brew "rclone"                         # Cloud storage sync (evaluate)
-# brew "restic"                         # Encrypted backups (evaluate)
 
 # Development Tools
-brew "mise"                             # Version manager
-brew "direnv"                           # Auto-load environment variables
 brew "neovim"                           # Terminal editor
 brew "helix"                            # Modern modal editor
-brew "shellcheck"                       # Shell script linter
-brew "just"                             # Command runner
-brew "docker"                           # Container CLI
-brew "lima"                             # Linux VMs for macOS
-brew "hyperfine"                        # Command benchmarking
-# brew "tokei"                          # Code statistics (evaluate)
-
-# Database Tools
-# brew "usql"                           # Universal SQL CLI (evaluate)
-# brew "pgcli"                          # Postgres CLI with autocomplete (evaluate)
-# brew "litecli"                        # SQLite CLI with autocomplete (evaluate)
-# brew "mycli"                          # MySQL CLI with autocomplete (evaluate)
-
-# Docker/Container Tools
-cask "docker"                           # Docker Desktop
-# brew "dive"                           # Docker image layer explorer (evaluate)
-# brew "hadolint"                       # Dockerfile linter (evaluate)
 
 # Terminal Multiplexer
 brew "zellij"                           # Modern tmux alternative
-
-# Terminal Enhancements & UI
-# brew "glow"                           # Markdown renderer (evaluate)
-# brew "moar"                           # Better pager (evaluate)
-# brew "mcfly"                          # Neural shell history (evaluate)
-# brew "gum"                            # Shell script UI toolkit (evaluate)
-# brew "vhs"                            # Terminal screen recorder (evaluate)
-# brew "charm"                          # Charm tools suite (evaluate)
-
-# Task Management
-# brew "taskwarrior-tui"                # Task management TUI (evaluate)
 
 # System Monitoring
 brew "btop"                             # Resource monitor
 brew "procs"                            # Modern ps alternative
 cask "istat-menus"                      # Menu bar system monitor
 
-# Container Management
-brew "ctop"                             # Container monitoring
-
-# AI/LLM Tools
-brew "gemini-cli"                       # Google Gemini CLI
-cask "codex"                            # OpenAI Codex CLI
-cask "claude"                           # Anthropic Claude
-cask "chatgpt"                          # OpenAI ChatGPT
-# brew "mods"                           # Pipe-friendly AI (evaluate)
-# brew "fabric"                         # AI workflow patterns (evaluate)
-
-# macOS Settings
-# brew "sijanc147/formulas/macprefs"   # System preferences management (evaluate)
-
 # Development Tools & Editors
-cask "cursor"                           # AI-powered code editor
-cask "cursor-cli"                       # Cursor CLI tools
-cask "windsurf"                         # AI code editor
-cask "visual-studio-code"               # VS Code
-cask "jetbrains-toolbox"                # JetBrains IDE manager
 cask "wezterm"                          # GPU-accelerated terminal
 cask "hammerspoon"                      # macOS automation
 
@@ -152,33 +54,5 @@ cask "obsidian"                         # Knowledge management
 cask "google-chrome"                    # Google Chrome
 cask "vivaldi"                          # Privacy-focused browser
 
-# Utilities
-cask "conductor"                        # Window/app switcher
-cask "antigravity"                      # Utility app
-
-# File Managers
-# brew "lf"                             # Terminal file manager (evaluate)
-# brew "ranger"                         # Python-based file manager (evaluate)
-# brew "nnn"                            # Fast file manager (evaluate)
-
-# Additional Search Tools
-# brew "ag"                             # The Silver Searcher (evaluate)
-
-# Clipboard Management
-# cask "clipy"                          # Clipboard history manager (evaluate)
-
 # Fonts (Nerd Fonts)
-cask "font-droid-sans-mono-nerd-font"  # Monospace font
-cask "font-fira-code-nerd-font"        # Monospace with ligatures
-cask "font-fira-mono-nerd-font"        # Monospace variant
-cask "font-hack-nerd-font"             # Monospace font
-cask "font-jetbrains-mono-nerd-font"   # JetBrains monospace
-cask "font-meslo-lg-nerd-font"         # Meslo variant
-cask "font-roboto-mono-nerd-font"      # Google monospace
 cask "font-sauce-code-pro-nerd-font"   # Primary terminal font
-cask "font-space-mono-nerd-font"       # Google monospace
-cask "font-ubuntu-mono-nerd-font"      # Ubuntu monospace
-
-# Communication & Entertainment
-cask "spotify"                          # Music streaming
-cask "zoom"                             # Video conferencing
