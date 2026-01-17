@@ -18,14 +18,9 @@ PROFILES_FILE="$DOTFILES_DIR/.profiles"
 # Parse flags
 # ============================================================================
 PROFILES=()
-TEST_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --test)
-            TEST_MODE=true
-            shift
-            ;;
         --profile)
             PROFILES+=("$2")
             shift 2
@@ -83,7 +78,8 @@ is_profile_available() {
 
     [[ ! -d "$profile_dir" ]] && return 1
 
-    local enabled=$(get_profile_conf "$profile_id" "enabled" "true")
+    local enabled
+    enabled=$(get_profile_conf "$profile_id" "enabled" "true")
     [[ "$enabled" == "false" ]] && return 1
 
     return 0
@@ -91,18 +87,26 @@ is_profile_available() {
 
 # Discover available profiles from directory structure
 # Returns: profile_id|name|description|order|requires (sorted by order)
+# Hidden profiles are excluded from menu but can be used with --profile
 discover_profiles() {
     for profile_dir in "$PROFILES_DIR"/*/; do
         [[ ! -d "$profile_dir" ]] && continue
-        local profile_id=$(basename "$profile_dir")
+        local profile_id
+        profile_id=$(basename "$profile_dir")
 
         # Skip if not available (disabled, etc.)
         is_profile_available "$profile_id" || continue
 
-        local name=$(get_profile_conf "$profile_id" "name" "$profile_id")
-        local description=$(get_profile_conf "$profile_id" "description" "")
-        local order=$(get_profile_conf "$profile_id" "order" "50")
-        local requires=$(get_profile_conf "$profile_id" "requires" "")
+        # Skip hidden profiles (use --profile <name> to select directly)
+        local hidden
+        hidden=$(get_profile_conf "$profile_id" "hidden" "false")
+        [[ "$hidden" == "true" ]] && continue
+
+        local name description order requires
+        name=$(get_profile_conf "$profile_id" "name" "$profile_id")
+        description=$(get_profile_conf "$profile_id" "description" "")
+        order=$(get_profile_conf "$profile_id" "order" "50")
+        requires=$(get_profile_conf "$profile_id" "requires" "")
 
         echo "$profile_id|$name|$description|$order|$requires"
     done | sort -t'|' -k4 -n
@@ -142,7 +146,8 @@ resolve_dependencies() {
         fi
 
         # Get and resolve dependencies first
-        local requires=$(get_profile_conf "$profile" "requires" "")
+        local requires
+        requires=$(get_profile_conf "$profile" "requires" "")
         if [[ -n "$requires" ]]; then
             IFS=',' read -ra deps <<< "$requires"
             for dep in "${deps[@]}"; do
@@ -174,7 +179,8 @@ sort_by_order() {
 
     # Build sortable list: order|profile_id
     for profile in "${profiles[@]}"; do
-        local order=$(get_profile_conf "$profile" "order" "50")
+        local order
+        order=$(get_profile_conf "$profile" "order" "50")
         echo "$order|$profile"
     done | sort -t'|' -k1 -n | cut -d'|' -f2
 }
@@ -225,6 +231,7 @@ if [[ ${#PROFILES[@]} -eq 0 ]]; then
                 if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#PROFILE_IDS[@]} ]]; then
                     idx=$((choice - 1))
                     selected_id="${PROFILE_IDS[$idx]}"
+                    # shellcheck disable=SC2076
                     [[ ! " ${PROFILES[*]} " =~ " $selected_id " ]] && PROFILES+=("$selected_id")
                 fi
             done

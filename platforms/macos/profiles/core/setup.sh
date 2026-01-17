@@ -11,6 +11,7 @@
 
 set -e
 
+# shellcheck disable=SC2034
 MODE="${1:-install}"
 
 # Load shared library

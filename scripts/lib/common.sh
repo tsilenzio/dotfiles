@@ -20,7 +20,8 @@ _DOTFILES_LIB_COMMON_LOADED=1
 safe_link() {
     local target="$1"
     local link="$2"
-    local link_dir=$(dirname "$link")
+    local link_dir
+    link_dir=$(dirname "$link")
 
     mkdir -p "$link_dir"
 
@@ -29,7 +30,8 @@ safe_link() {
             echo "  ✓ $link (already configured)"
             return 0
         fi
-        local backup="${link}.backup.$(date +%Y%m%d-%H%M%S)"
+        local backup
+        backup="${link}.backup.$(date +%Y%m%d-%H%M%S)"
         echo "  ⚠ Backing up $link → $backup"
         mv "$link" "$backup"
     fi

@@ -121,7 +121,7 @@ fresh_setup_mode() {
 
     # Generate age key pair
     log "Generating age key pair..."
-    age-keygen 2>&1 > "$AGE_KEY_FILE"
+    age-keygen > "$AGE_KEY_FILE"
     chmod 600 "$AGE_KEY_FILE"
 
     # Extract public key
