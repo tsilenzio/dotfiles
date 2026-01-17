@@ -9,6 +9,7 @@
 
 # Avoid running twice if already done this session
 if [[ "$DOTFILES_PREFLIGHT_DONE" == "true" ]]; then
+    # shellcheck disable=SC2317
     return 0 2>/dev/null || exit 0
 fi
 

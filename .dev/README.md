@@ -23,8 +23,8 @@ curl -fsSL https://raw.githubusercontent.com/tsilenzio/dotfiles/main/bootstrap.s
 # Non-interactive with specific profiles
 curl -fsSL https://... | bash -s -- --profile core --profile personal
 
-# Test mode (shows test profile option)
-curl -fsSL https://... | bash -s -- --test
+# Show hidden test profile in menu
+curl -fsSL https://... | bash -s -- --with-hidden test
 ```
 
 ### Testing curl|bash Locally
@@ -38,8 +38,8 @@ cat bootstrap.sh | bash
 # Mimics: curl ... | bash -s -- --profile core --profile work
 cat bootstrap.sh | bash -s -- --profile core --profile work
 
-# Mimics: curl ... | bash -s -- --test
-cat bootstrap.sh | bash -s -- --test
+# Mimics: curl ... | bash -s -- --with-hidden test
+cat bootstrap.sh | bash -s -- --with-hidden test
 ```
 
 This triggers the "running from curl pipe" code path rather than the local copy path. Useful for testing that `/dev/tty` prompts work correctly when stdin is a pipe.
@@ -56,8 +56,8 @@ This triggers the "running from curl pipe" code path rather than the local copy 
 just dev              # Show available dev commands
 just dev setup        # Install CLT + Homebrew from cached installers
 just dev prefetch     # Pre-fetch packages (see profiles below)
-just dev bootstrap    # Run bootstrap.sh with --test (unlocks test profile)
-just dev install      # Run install.sh with --test (unlocks test profile)
+just dev bootstrap    # Run bootstrap.sh with --with-hidden test (shows test profile)
+just dev install      # Run install.sh with --with-hidden test (shows test profile)
 ```
 
 ### Prefetch Profiles
@@ -70,7 +70,7 @@ just dev prefetch personal     # Core + personal packages
 just dev prefetch all          # All profiles
 ```
 
-The `--test` flag adds a "Test" profile option (minimal packages, standalone) for quick VM testing.
+The `--with-hidden test` flag shows the hidden "Test" profile in the menu for quick VM testing.
 
 ## Testing Workflow
 
@@ -127,7 +127,8 @@ name="Display Name"
 description="What this profile includes"
 order=10              # Lower = earlier in list and execution order
 requires="core"       # Comma-separated dependencies (resolved automatically)
-enabled=false         # Hide from menu and skip during upgrades (default: true)
+hidden=true           # Hide from menu, use --profile <name> directly (default: false)
+enabled=false         # Disable entirely, skip during upgrades (default: true)
 ```
 
 ## Why This Exists

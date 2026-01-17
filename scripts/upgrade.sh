@@ -132,6 +132,10 @@ PROFILES=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --profile=*)
+            PROFILES+=("${1#*=}")
+            shift
+            ;;
         --profile)
             PROFILES+=("$2")
             shift 2

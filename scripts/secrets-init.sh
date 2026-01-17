@@ -59,7 +59,7 @@ setup_keychain() {
     echo "│  (This encrypts your age key for safe git storage)        │"
     echo "└────────────────────────────────────────────────────────────┘"
     echo ""
-    read -s -p "Age password: " AGE_PASSWORD
+    read -r -s -p "Age password: " AGE_PASSWORD
     echo
 
     if [[ -z "$AGE_PASSWORD" ]]; then
