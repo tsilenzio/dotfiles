@@ -12,7 +12,7 @@ INSTALL_FLAGS="$*"
 # ============================================================================
 # Auto-logging
 # ============================================================================
-LOG_DIR="$DOTFILES_DIR/logs"
+LOG_DIR="$DOTFILES_DIR/.state/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
 

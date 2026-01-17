@@ -21,6 +21,10 @@ install:
 update:
     ./scripts/update.sh
 
+# Apply configuration (packages + symlinks)
+upgrade:
+    ./scripts/upgrade.sh
+
 # Show available rollback points
 history:
     ./scripts/history.sh

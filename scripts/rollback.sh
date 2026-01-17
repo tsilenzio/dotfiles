@@ -8,6 +8,9 @@ set -e
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DOTFILES_DIR"
 
+SNAPSHOT_BASE="$DOTFILES_DIR/.state/snapshots"
+LOG_DIR="$DOTFILES_DIR/.state/logs"
+
 # Parse arguments
 TARGET=""
 WITH_BREW=false
@@ -39,11 +42,13 @@ if [[ -z "$TARGET" ]]; then
         tag="${TAGS[$i]}"
         TIMESTAMP="${tag#pre-update/}"
         HASH=$(git rev-parse --short "$tag")
-        BREW_INDICATOR=""
-        if [[ -f "$DOTFILES_DIR/logs/brew-snapshots/$TIMESTAMP.Brewfile" ]]; then
-            BREW_INDICATOR=" [brew]"
+        INDICATORS=""
+        SNAPSHOT_DIR="$SNAPSHOT_BASE/$TIMESTAMP"
+        if [[ -d "$SNAPSHOT_DIR" ]]; then
+            [[ -f "$SNAPSHOT_DIR/Brewfile" ]] && INDICATORS+=" [brew]"
+            [[ -f "$SNAPSHOT_DIR/profiles" ]] && INDICATORS+=" [profiles]"
         fi
-        echo "  $((i+1))) $TIMESTAMP ($HASH)$BREW_INDICATOR"
+        echo "  $((i+1))) $TIMESTAMP ($HASH)$INDICATORS"
     done
 
     echo ""
@@ -58,6 +63,7 @@ if [[ -z "$TARGET" ]]; then
 fi
 
 TAG_NAME="pre-update/$TARGET"
+SNAPSHOT_DIR="$SNAPSHOT_BASE/$TARGET"
 
 # Verify tag exists
 if ! git rev-parse "$TAG_NAME" &>/dev/null; then
@@ -80,13 +86,12 @@ if [[ "$DRY_RUN" == "true" ]]; then
     git log --oneline "$TAG_NAME"..HEAD
 
     if [[ "$WITH_BREW" == "true" ]]; then
-        SNAPSHOT_FILE="$DOTFILES_DIR/logs/brew-snapshots/$TARGET.Brewfile"
-        if [[ -f "$SNAPSHOT_FILE" ]]; then
+        if [[ -f "$SNAPSHOT_DIR/Brewfile" ]]; then
             echo ""
-            echo "[DRY RUN] Would restore brew packages from: $SNAPSHOT_FILE"
+            echo "[DRY RUN] Would restore brew packages from: $SNAPSHOT_DIR/Brewfile"
             echo ""
             echo "Packages that would be removed (not in snapshot):"
-            brew bundle cleanup --file="$SNAPSHOT_FILE" 2>/dev/null || echo "  (unable to determine)"
+            brew bundle cleanup --file="$SNAPSHOT_DIR/Brewfile" 2>/dev/null || echo "  (unable to determine)"
         else
             echo ""
             echo "[DRY RUN] No brew snapshot found for $TARGET"
@@ -106,10 +111,10 @@ echo "Git reset complete."
 
 # Handle brew rollback if requested
 if [[ "$WITH_BREW" == "true" ]]; then
-    SNAPSHOT_FILE="$DOTFILES_DIR/logs/brew-snapshots/$TARGET.Brewfile"
-    LOG_FILE="$DOTFILES_DIR/logs/rollback-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="$LOG_DIR/rollback-$(date +%Y%m%d-%H%M%S).log"
 
-    if [[ ! -f "$SNAPSHOT_FILE" ]]; then
+    if [[ ! -f "$SNAPSHOT_DIR/Brewfile" ]]; then
         echo ""
         echo "Warning: No brew snapshot found for $TARGET"
         echo "Skipping brew rollback."
@@ -125,11 +130,11 @@ if [[ "$WITH_BREW" == "true" ]]; then
         echo "=== Brew Rollback Log ==="
         echo "Timestamp: $(date)"
         echo "Rollback target: $TARGET"
-        echo "Snapshot file: $SNAPSHOT_FILE"
+        echo "Snapshot: $SNAPSHOT_DIR/Brewfile"
         echo ""
 
         echo "=== Packages to be removed (not in snapshot) ==="
-        brew bundle cleanup --file="$SNAPSHOT_FILE" 2>&1 || true
+        brew bundle cleanup --file="$SNAPSHOT_DIR/Brewfile" 2>&1 || true
 
         echo ""
         read -r -p "Proceed with brew cleanup and reinstall? [y/N]: " CONFIRM
@@ -137,11 +142,11 @@ if [[ "$WITH_BREW" == "true" ]]; then
         if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
             echo ""
             echo "=== Running brew bundle cleanup ==="
-            brew bundle cleanup --file="$SNAPSHOT_FILE" --force 2>&1
+            brew bundle cleanup --file="$SNAPSHOT_DIR/Brewfile" --force 2>&1
 
             echo ""
             echo "=== Running brew bundle install ==="
-            brew bundle install --file="$SNAPSHOT_FILE" 2>&1
+            brew bundle install --file="$SNAPSHOT_DIR/Brewfile" 2>&1
 
             echo ""
             echo "=== Brew rollback complete ==="

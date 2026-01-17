@@ -28,18 +28,38 @@ fi
 # Create rollback point
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 TAG_NAME="pre-update/$TIMESTAMP"
+SNAPSHOT_DIR="$DOTFILES_DIR/.state/snapshots/$TIMESTAMP"
 
 echo "Creating rollback point: $TAG_NAME"
 git tag "$TAG_NAME"
 
+# Create snapshot directory
+mkdir -p "$SNAPSHOT_DIR"
+
 # Snapshot current brew state (if brew available)
 if command -v brew &>/dev/null; then
-    SNAPSHOT_DIR="$DOTFILES_DIR/logs/brew-snapshots"
-    mkdir -p "$SNAPSHOT_DIR"
-    SNAPSHOT_FILE="$SNAPSHOT_DIR/$TIMESTAMP.Brewfile"
-    echo "Saving brew snapshot: $SNAPSHOT_FILE"
-    brew bundle dump --file="$SNAPSHOT_FILE" --force
+    echo "Saving brew snapshot..."
+    brew bundle dump --file="$SNAPSHOT_DIR/Brewfile" --force
 fi
+
+# Snapshot current profiles (if exists)
+if [[ -f "$DOTFILES_DIR/.profiles" ]]; then
+    cp "$DOTFILES_DIR/.profiles" "$SNAPSHOT_DIR/profiles"
+elif [[ -f "$DOTFILES_DIR/.profile" ]]; then
+    cp "$DOTFILES_DIR/.profile" "$SNAPSHOT_DIR/profiles"
+fi
+
+# Create metadata
+cat > "$SNAPSHOT_DIR/metadata.json" << EOF
+{
+  "timestamp": "$TIMESTAMP",
+  "git_hash": "$LOCAL",
+  "git_tag": "$TAG_NAME",
+  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
+echo "Snapshot saved: .state/snapshots/$TIMESTAMP/"
 
 # Check for dirty files
 if [[ -n $(git status --porcelain) ]]; then
@@ -63,4 +83,4 @@ echo ""
 echo "Updated: $PREV_SHORT -> $NEW_SHORT"
 echo ""
 echo "To rollback: just rollback $TIMESTAMP"
-echo "Run 'just install' to apply any new changes."
+echo "Run 'just upgrade' to apply any new changes."

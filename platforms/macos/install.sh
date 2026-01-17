@@ -79,6 +79,9 @@ fi
 
 echo "Using profile: $PROFILE"
 
+# Save profile for future upgrades
+echo "$PROFILE" > "$DOTFILES_DIR/.profile"
+
 # ============================================================================
 # Preflight: Request permissions and setup temporary sudo
 # ============================================================================
@@ -115,105 +118,9 @@ else
 fi
 
 # ============================================================================
-# Install Homebrew packages
+# Configure packages and symlinks (shared with upgrade.sh)
 # ============================================================================
-
-# Use local cache if available (for faster installs)
-if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]]; then
-    export HOMEBREW_CACHE="$DOTFILES_SOURCE_DIR/.cache/homebrew"
-    export HOMEBREW_NO_AUTO_UPDATE=1
-    echo "Using local Homebrew cache: $HOMEBREW_CACHE"
-fi
-
-# Temporarily allow errors (some packages might fail)
-set +e
-BUNDLE_EXIT_CODE=0
-
-if [[ "$PROFILE" == "test" ]]; then
-    # Test mode: minimal packages only
-    echo "Installing minimal test packages..."
-    brew bundle --verbose --file="$PLATFORM_DIR/Brewfile.test"
-    BUNDLE_EXIT_CODE=$?
-else
-    # Regular profiles: base + profile-specific
-    echo "Installing base Homebrew packages..."
-    brew bundle --verbose --file="$PLATFORM_DIR/Brewfile"
-    BUNDLE_EXIT_CODE=$?
-
-    PROFILE_BREWFILE="$PLATFORM_DIR/Brewfile.$PROFILE"
-    if [[ -f "$PROFILE_BREWFILE" ]]; then
-        echo "Installing $PROFILE profile packages..."
-        brew bundle --verbose --file="$PROFILE_BREWFILE"
-    else
-        echo "No Brewfile.$PROFILE found, using base packages only"
-    fi
-fi
-set -e
-
-if [[ $BUNDLE_EXIT_CODE -ne 0 ]]; then
-    echo ""
-    echo "Warning: Some Homebrew packages failed to install."
-    echo "   Continuing with the rest of the setup..."
-    echo ""
-fi
-
-# Kill apps that auto-launch after installation
-killall "zoom.us" 2>/dev/null || true
-
-# Refresh PATH to pick up newly installed tools
-eval "$(brew shellenv)"
-
-# ============================================================================
-# Install config files (symlinks)
-# ============================================================================
-echo "Creating symlinks..."
-
-# Safe symlink: backup existing file if it's not already pointing to our target
-safe_link() {
-    local target="$1"
-    local link="$2"
-    local link_dir=$(dirname "$link")
-
-    # Create parent directory if needed
-    mkdir -p "$link_dir"
-
-    # If link exists (file or symlink)
-    if [[ -e "$link" || -L "$link" ]]; then
-        # If it's already a symlink to our target, skip
-        if [[ -L "$link" && "$(readlink "$link")" == "$target" ]]; then
-            echo "  ✓ $link (already linked)"
-            return 0
-        fi
-        # Otherwise, backup the existing file/symlink
-        local backup="${link}.backup.$(date +%Y%m%d-%H%M%S)"
-        echo "  ⚠ Backing up $link → $backup"
-        mv "$link" "$backup"
-    fi
-
-    # Create the symlink
-    ln -sf "$target" "$link"
-    echo "  ✓ $link → $target"
-}
-
-# Create config directories
-mkdir -p "$HOME/.config"
-mkdir -p "$HOME/.config/mise"
-mkdir -p "$HOME/.config/wezterm"
-mkdir -p "$HOME/.ssh/sockets"
-mkdir -p "$HOME/.gnupg"
-chmod 700 "$HOME/.ssh"
-chmod 700 "$HOME/.gnupg"
-
-# Create symlinks with backup protection
-safe_link "$DOTFILES_DIR/config/zsh/zshrc" "$HOME/.zshrc"
-safe_link "$DOTFILES_DIR/config/zsh/zshenv" "$HOME/.zshenv"
-safe_link "$DOTFILES_DIR/config/starship/starship.toml" "$HOME/.config/starship.toml"
-safe_link "$DOTFILES_DIR/config/git/gitconfig" "$HOME/.gitconfig"
-safe_link "$DOTFILES_DIR/config/git/gitignore" "$HOME/.gitignore"
-safe_link "$DOTFILES_DIR/config/mise/config.toml" "$HOME/.config/mise/config.toml"
-safe_link "$DOTFILES_DIR/config/wezterm/wezterm.lua" "$HOME/.config/wezterm/wezterm.lua"
-safe_link "$DOTFILES_DIR/config/ssh/config" "$HOME/.ssh/config"
-safe_link "$DOTFILES_DIR/config/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
+"$DOTFILES_DIR/scripts/upgrade.sh" --profile "$PROFILE"
 
 # ============================================================================
 # Enable Touch ID for sudo
