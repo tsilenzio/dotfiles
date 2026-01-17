@@ -20,20 +20,6 @@ if ! command -v dockutil &> /dev/null; then
     exit 1
 fi
 
-# Require user confirmation
-echo ""
-echo "This script will customize your Dock:"
-echo "  - Remove all existing items"
-echo "  - Add configured applications in order"
-echo "  - Configure Dock settings"
-echo ""
-read -p "Continue? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 0
-fi
-
 log "Configuring Dock..."
 
 # =============================================================================

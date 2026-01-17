@@ -1,6 +1,10 @@
 # Logs
 logs/
 
+# Local testing cache (installers, Homebrew package cache)
+.cache/*
+!.cache/.gitkeep
+
 # macOS system files
 .DS_Store
 ._*

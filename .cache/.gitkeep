@@ -1,0 +1,9 @@
+# Local testing cache - place these files here for offline/faster installs:
+#   - just-*-aarch64-apple-darwin.tar.gz  (from github.com/casey/just/releases)
+#   - Command_Line_Tools_for_Xcode_*.dmg  or  Command_Line_Tools.dmg
+#   - Homebrew-*.pkg                       or  Homebrew.pkg
+#
+# Versioned names preferred; latest version used if multiple exist.
+# The homebrew/ subdirectory is created automatically by 'just dev prefetch'.
+#
+# See .dev/README.md for full instructions.

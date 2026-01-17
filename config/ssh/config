@@ -1,0 +1,12 @@
+Host tsilenz.io
+  HostName tsilenz.io
+
+Host *
+  IdentityFile ~/.ssh/id_ed25519
+  AddKeysToAgent yes
+  UseKeychain yes
+  # Multiplexing - reuse connections for 15 minutes
+  ControlMaster auto
+  ControlPath ~/.ssh/sockets/%r@%h-%p
+  ControlPersist 900
+  Compression yes

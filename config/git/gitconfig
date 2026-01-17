@@ -34,3 +34,13 @@
 [user]
 	name = Taylor Silenzio
 	email = taylor@silenz.io
+	signingkey = D09070B444FA93F6
+
+[commit]
+	gpgsign = true
+
+[tag]
+	gpgsign = true
+
+[gpg]
+	program = /opt/homebrew/bin/gpg

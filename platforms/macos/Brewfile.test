@@ -1,0 +1,28 @@
+# Minimal Brewfile for testing install scripts
+# Only includes packages required by automation scripts
+
+# Taps
+tap "jorgelbg/tap"
+
+# Core shell (needed for default shell change)
+brew "zsh"
+
+# GPG signing (used in gitconfig)
+brew "gnupg"
+brew "pinentry-mac"
+brew "pinentry-touchid"
+
+# Secrets management
+brew "age"
+brew "sops"
+
+# macOS automation (used in preferences.sh and dock.sh)
+brew "dockutil"
+brew "displayplacer"
+
+# Git tools (used in gitconfig)
+brew "git"
+brew "git-delta"
+
+# Task runner
+brew "just"

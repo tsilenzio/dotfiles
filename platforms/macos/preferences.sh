@@ -32,18 +32,6 @@ if [[ "${macos_version%%.*}" -ne 26 ]]; then
     warn "This script was written for macOS 26.x (Tahoe) and has not been tested on other versions."
 fi
 
-# Require user confirmation
-echo ""
-echo "This script will modify system preferences for user: $USER"
-echo "Changes will take effect after logging out or restarting affected applications."
-echo ""
-read -p "Continue? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 0
-fi
-
 # =============================================================================
 # BATTERY & POWER
 # =============================================================================

@@ -1,0 +1,31 @@
+# Development/testing utilities (internal use)
+# Usage: just dev <recipe>
+
+set shell := ["bash", "-cu"]
+
+DEV_DIR := justfile_directory()
+DOTFILES_DIR := parent_directory(DEV_DIR)
+
+# Show dev commands
+default:
+    @just --justfile "{{justfile()}}" --list
+
+# Install CLT and Homebrew from .cache/ (offline installers)
+setup:
+    "{{DEV_DIR}}/setup.sh"
+
+# Pre-fetch Homebrew packages to .cache/homebrew/
+# Usage: just dev prefetch [profiles...]
+#   just dev prefetch              # test only (default)
+#   just dev prefetch work         # base + work
+#   just dev prefetch all          # all Brewfiles
+prefetch *args:
+    "{{DEV_DIR}}/prefetch.sh" {{args}}
+
+# Run bootstrap in test mode (minimal packages)
+bootstrap:
+    "{{DOTFILES_DIR}}/bootstrap.sh" --test
+
+# Run install directly in test mode (skips copy step)
+install:
+    "{{DOTFILES_DIR}}/install.sh" --test

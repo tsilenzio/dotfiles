@@ -23,6 +23,17 @@ git clone https://github.com/tsilenzio/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install.sh
 ```
 
+## Task Runner
+
+This repo uses [just](https://github.com/casey/just) for common tasks:
+
+```bash
+just              # Show available commands
+just install      # Run the full install script
+just secrets ...  # Secrets management (init, backup, restore)
+just platform ... # Platform-specific commands
+```
+
 ## Structure
 
 ```
