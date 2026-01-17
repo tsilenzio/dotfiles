@@ -1,33 +1,37 @@
 #!/usr/bin/env bash
 
-# Apply dotfiles configuration (packages + symlinks)
-# Safe to run repeatedly - used by both install.sh and `just upgrade`
+# Upgrade: Re-run profile setup scripts in upgrade mode
+# Safe to run repeatedly
 #
-# Usage: ./scripts/upgrade.sh [--profile <name>]
+# Usage: ./scripts/upgrade.sh [--profile <name>...]
 
 set -e
 
 DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 export DOTFILES_DIR
 
+PROFILES_FILE="$DOTFILES_DIR/.profiles"
+
+# ============================================================================
 # Detect OS
+# ============================================================================
 case "$OSTYPE" in
     darwin*) OS="macos" ;;
     linux*)  OS="linux" ;;
     *)       echo "Error: Unsupported OS: $OSTYPE"; exit 1 ;;
 esac
 
-PLATFORM_DIR="$DOTFILES_DIR/platforms/$OS"
+PROFILES_DIR="$DOTFILES_DIR/platforms/$OS/profiles"
 
 # ============================================================================
 # Parse flags
 # ============================================================================
-PROFILE=""
+PROFILES=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --profile)
-            PROFILE="$2"
+            PROFILES+=("$2")
             shift 2
             ;;
         *)
@@ -37,18 +41,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ============================================================================
-# Load or prompt for profile
+# Load saved profiles if none specified
 # ============================================================================
-PROFILE_FILE="$DOTFILES_DIR/.profile"
-
-if [[ -z "$PROFILE" ]]; then
-    # Try to load saved profile
-    if [[ -f "$PROFILE_FILE" ]]; then
-        PROFILE=$(cat "$PROFILE_FILE")
-        echo "Using saved profile: $PROFILE"
+if [[ ${#PROFILES[@]} -eq 0 ]]; then
+    if [[ -f "$PROFILES_FILE" ]]; then
+        mapfile -t PROFILES < "$PROFILES_FILE"
+        echo "Using saved profiles: ${PROFILES[*]}"
     else
-        echo "Error: No profile specified and no saved profile found."
-        echo "Run 'just install' first, or use: ./scripts/upgrade.sh --profile <name>"
+        echo "Error: No profiles specified and no saved profiles found."
+        echo "Run './install.sh' first, or use: ./scripts/upgrade.sh --profile <name>"
         exit 1
     fi
 fi
@@ -62,16 +63,10 @@ if ! command -v brew &>/dev/null; then
     elif [[ -x "/usr/local/bin/brew" ]]; then
         eval "$(/usr/local/bin/brew shellenv)"
     else
-        echo "Error: Homebrew not found. Run 'just install' first."
+        echo "Error: Homebrew not found. Run './install.sh' first."
         exit 1
     fi
 fi
-
-# ============================================================================
-# Configure Homebrew packages
-# ============================================================================
-echo ""
-echo "Configuring packages..."
 
 # Use local cache if available
 if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]]; then
@@ -80,93 +75,56 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
-# Temporarily allow errors (some packages might fail)
-set +e
-BUNDLE_EXIT_CODE=0
-
-if [[ "$PROFILE" == "test" ]]; then
-    brew bundle --verbose --file="$PLATFORM_DIR/Brewfile.test"
-    BUNDLE_EXIT_CODE=$?
-else
-    # Base packages
-    brew bundle --verbose --file="$PLATFORM_DIR/Brewfile"
-    BUNDLE_EXIT_CODE=$?
-
-    # Profile-specific packages
-    PROFILE_BREWFILE="$PLATFORM_DIR/Brewfile.$PROFILE"
-    if [[ -f "$PROFILE_BREWFILE" ]]; then
-        echo ""
-        echo "Configuring $PROFILE profile packages..."
-        brew bundle --verbose --file="$PROFILE_BREWFILE"
-    fi
-fi
-set -e
-
-if [[ $BUNDLE_EXIT_CODE -ne 0 ]]; then
-    echo ""
-    echo "Warning: Some packages failed to configure."
-    echo "   Continuing with the rest of the setup..."
-    echo ""
-fi
-
-# Kill apps that auto-launch after installation
-killall "zoom.us" 2>/dev/null || true
-
-# Refresh PATH
-eval "$(brew shellenv)"
-
 # ============================================================================
-# Configure symlinks
+# Run each profile's setup.sh in upgrade mode
 # ============================================================================
 echo ""
-echo "Configuring symlinks..."
+echo "════════════════════════════════════════════════════════════"
+echo "  Running profile upgrades"
+echo "════════════════════════════════════════════════════════════"
 
-# Safe symlink: backup existing file if it's not already pointing to our target
-safe_link() {
-    local target="$1"
-    local link="$2"
-    local link_dir=$(dirname "$link")
-
-    # Create parent directory if needed
-    mkdir -p "$link_dir"
-
-    # If link exists (file or symlink)
-    if [[ -e "$link" || -L "$link" ]]; then
-        # If it's already a symlink to our target, skip
-        if [[ -L "$link" && "$(readlink "$link")" == "$target" ]]; then
-            echo "  ✓ $link (already configured)"
-            return 0
-        fi
-        # Otherwise, backup the existing file/symlink
-        local backup="${link}.backup.$(date +%Y%m%d-%H%M%S)"
-        echo "  ⚠ Backing up $link → $backup"
-        mv "$link" "$backup"
+# Check if profile is enabled
+is_profile_enabled() {
+    local profile="$1"
+    local conf_file="$PROFILES_DIR/$profile/profile.conf"
+    if [[ -f "$conf_file" ]] && grep -q '^enabled=false' "$conf_file"; then
+        return 1
     fi
-
-    # Create the symlink
-    ln -sf "$target" "$link"
-    echo "  ✓ $link → $target"
+    return 0
 }
 
-# Create config directories
-mkdir -p "$HOME/.config"
-mkdir -p "$HOME/.config/mise"
-mkdir -p "$HOME/.config/wezterm"
-mkdir -p "$HOME/.ssh/sockets"
-mkdir -p "$HOME/.gnupg"
-chmod 700 "$HOME/.ssh"
-chmod 700 "$HOME/.gnupg"
+for profile in "${PROFILES[@]}"; do
+    PROFILE_DIR="$PROFILES_DIR/$profile"
+    SETUP_SCRIPT="$PROFILE_DIR/setup.sh"
 
-# Apply symlinks
-safe_link "$DOTFILES_DIR/config/zsh/zshrc" "$HOME/.zshrc"
-safe_link "$DOTFILES_DIR/config/zsh/zshenv" "$HOME/.zshenv"
-safe_link "$DOTFILES_DIR/config/starship/starship.toml" "$HOME/.config/starship.toml"
-safe_link "$DOTFILES_DIR/config/git/gitconfig" "$HOME/.gitconfig"
-safe_link "$DOTFILES_DIR/config/git/gitignore" "$HOME/.gitignore"
-safe_link "$DOTFILES_DIR/config/mise/config.toml" "$HOME/.config/mise/config.toml"
-safe_link "$DOTFILES_DIR/config/wezterm/wezterm.lua" "$HOME/.config/wezterm/wezterm.lua"
-safe_link "$DOTFILES_DIR/config/ssh/config" "$HOME/.ssh/config"
-safe_link "$DOTFILES_DIR/config/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
+    if ! is_profile_enabled "$profile"; then
+        echo ""
+        echo "Skipping disabled profile: $profile"
+        continue
+    fi
+
+    if [[ ! -f "$SETUP_SCRIPT" ]]; then
+        echo ""
+        echo "Warning: No setup.sh found for profile '$profile', skipping..."
+        continue
+    fi
+
+    echo ""
+    echo "────────────────────────────────────────────────────────────"
+    echo "  Profile: $profile (upgrade)"
+    echo "────────────────────────────────────────────────────────────"
+
+    # Export useful variables for the profile script
+    export DOTFILES_DIR
+    export PROFILE_DIR
+    export PROFILE_NAME="$profile"
+    export DOTFILES_MODE="upgrade"
+
+    # Run the profile's setup script in upgrade mode
+    "$SETUP_SCRIPT" upgrade
+done
 
 echo ""
-echo "Configuration complete!"
+echo "════════════════════════════════════════════════════════════"
+echo "  Upgrade complete!"
+echo "════════════════════════════════════════════════════════════"

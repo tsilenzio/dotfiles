@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 
 # macOS Installation Script
-# Called by root install.sh with DOTFILES_DIR set
+# - Discovers and presents available profiles
+# - Handles preflight (sudo caching)
+# - Installs Homebrew
+# - Calls each selected profile's setup.sh
 
 set -e
 
-# Verify required variables
-if [[ -z "$DOTFILES_DIR" ]]; then
-    echo "Error: This script should be called from the root install.sh"
-    exit 1
-fi
-
+DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
+PROFILES_DIR="$PLATFORM_DIR/profiles"
+PROFILES_FILE="$DOTFILES_DIR/.profiles"
 
 # ============================================================================
 # Parse flags
 # ============================================================================
+PROFILES=()
 TEST_MODE=false
-PROFILE=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --profile)
-            PROFILE="$2"
+            PROFILES+=("$2")
             shift 2
             ;;
         *)
@@ -36,62 +36,148 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ============================================================================
-# Select Profile
+# Determine install vs upgrade mode
 # ============================================================================
-if [[ -z "$PROFILE" ]]; then
-    # Interactive mode - prompt for profile
-    echo ""
-    echo "Select profile:"
-    echo "  1) Personal"
-    echo "  2) Work"
-    if [[ "$TEST_MODE" == "true" ]]; then
-        echo "  3) Test (minimal packages)"
-    fi
-    echo ""
+if [[ -f "$PROFILES_FILE" ]]; then
+    MODE="upgrade"
+else
+    MODE="install"
+fi
 
-    # Try to read interactively via /dev/tty (works even when stdin is piped)
-    PROFILE_CHOICE=""
-    if [[ -r /dev/tty ]]; then
-        if [[ "$TEST_MODE" == "true" ]]; then
-            read -r -p "Choice [1/2/3]: " PROFILE_CHOICE < /dev/tty || true
-        else
-            read -r -p "Choice [1/2]: " PROFILE_CHOICE < /dev/tty || true
+echo "Mode: $MODE"
+
+# ============================================================================
+# Profile discovery
+# ============================================================================
+
+# Discover available profiles from directory structure
+# Returns: profile_id|name|description|order|required|standalone (sorted by order)
+discover_profiles() {
+    for profile_dir in "$PROFILES_DIR"/*/; do
+        [[ ! -d "$profile_dir" ]] && continue
+        local profile_id=$(basename "$profile_dir")
+        local conf_file="$profile_dir/profile.conf"
+
+        # Defaults
+        local name="$profile_id"
+        local description=""
+        local order=50
+        local required=false
+        local standalone=false
+        local enabled=true
+
+        # Read profile.conf if exists
+        if [[ -f "$conf_file" ]]; then
+            while IFS='=' read -r key value; do
+                [[ -z "$key" || "$key" =~ ^# ]] && continue
+                value="${value%\"}"
+                value="${value#\"}"
+                case "$key" in
+                    name) name="$value" ;;
+                    description) description="$value" ;;
+                    order) order="$value" ;;
+                    required) required="$value" ;;
+                    standalone) standalone="$value" ;;
+                    enabled) enabled="$value" ;;
+                esac
+            done < "$conf_file"
         fi
-    fi
 
-    if [[ -n "$PROFILE_CHOICE" ]]; then
-        case $PROFILE_CHOICE in
-            1) PROFILE="personal" ;;
-            2) PROFILE="work" ;;
-            3) [[ "$TEST_MODE" == "true" ]] && PROFILE="test" || PROFILE="personal" ;;
-            *) echo "Invalid choice, defaulting to personal"; PROFILE="personal" ;;
-        esac
-    elif [[ -n "$DOTFILES_PROFILE" ]]; then
-        # Fallback to environment variable
-        echo "Using DOTFILES_PROFILE=$DOTFILES_PROFILE"
-        PROFILE="$DOTFILES_PROFILE"
+        # Skip disabled profiles
+        if [[ "$enabled" == "false" ]]; then
+            continue
+        fi
+
+        # Skip standalone profiles (like test) unless in test mode
+        if [[ "$standalone" == "true" && "$TEST_MODE" != "true" ]]; then
+            continue
+        fi
+
+        echo "$profile_id|$name|$description|$order|$required|$standalone"
+    done | sort -t'|' -k4 -n
+}
+
+# ============================================================================
+# Profile selection (if not provided via flags)
+# ============================================================================
+if [[ ${#PROFILES[@]} -eq 0 ]]; then
+    if [[ "$MODE" == "upgrade" && -f "$PROFILES_FILE" ]]; then
+        # Upgrade mode - use saved profiles
+        mapfile -t PROFILES < "$PROFILES_FILE"
+        echo "Using saved profiles: ${PROFILES[*]}"
     else
-        echo "Error: No profile selected and no TTY available."
-        echo "Use --profile <name> or set DOTFILES_PROFILE=<name>"
-        exit 1
+        # Install mode - prompt for selection
+        echo ""
+        echo "Available profiles:"
+        echo ""
+
+        declare -a PROFILE_IDS=()
+        declare -a REQUIRED_PROFILES=()
+        MENU_NUM=0
+
+        while IFS='|' read -r id name desc order required standalone; do
+            [[ -z "$id" ]] && continue
+
+            if [[ "$required" == "true" ]]; then
+                REQUIRED_PROFILES+=("$id")
+                echo "  *) $name - $desc [always included]"
+            else
+                MENU_NUM=$((MENU_NUM + 1))
+                PROFILE_IDS+=("$id")
+                echo "  $MENU_NUM) $name - $desc"
+            fi
+        done < <(discover_profiles)
+
+        echo ""
+        echo "Select profiles (comma-separated, e.g., 1,2):"
+        echo "  Enter) Required profiles only"
+        echo ""
+
+        echo -n "Selection: "
+        read -r SELECTION < /dev/tty
+        echo "$SELECTION"  # Echo to log
+
+        # Start with required profiles
+        PROFILES=("${REQUIRED_PROFILES[@]}")
+
+        if [[ -n "$SELECTION" ]]; then
+            SELECTION="${SELECTION//,/ }"
+            for choice in $SELECTION; do
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#PROFILE_IDS[@]} ]]; then
+                    idx=$((choice - 1))
+                    selected_id="${PROFILE_IDS[$idx]}"
+                    [[ ! " ${PROFILES[*]} " =~ " $selected_id " ]] && PROFILES+=("$selected_id")
+                fi
+            done
+        fi
     fi
 fi
 
-echo "Using profile: $PROFILE"
+# Ensure required profiles are always included
+while IFS='|' read -r id name desc order required standalone; do
+    [[ -z "$id" ]] && continue
+    if [[ "$required" == "true" && ! " ${PROFILES[*]} " =~ " $id " ]]; then
+        PROFILES=("$id" "${PROFILES[@]}")
+    fi
+done < <(discover_profiles)
 
-# Save profile for future upgrades
-echo "$PROFILE" > "$DOTFILES_DIR/.profile"
+echo ""
+echo "Selected profiles: ${PROFILES[*]}"
+
+# Save profiles for future upgrades
+printf '%s\n' "${PROFILES[@]}" > "$PROFILES_FILE"
 
 # ============================================================================
 # Preflight: Request permissions and setup temporary sudo
 # ============================================================================
-source "$PLATFORM_DIR/preflight.sh"
-trap preflight_cleanup EXIT
+if [[ -f "$PLATFORM_DIR/preflight.sh" ]]; then
+    source "$PLATFORM_DIR/preflight.sh"
+    trap preflight_cleanup EXIT
+fi
 
 # ============================================================================
-# Install Homebrew
+# Install Homebrew (if not present)
 # ============================================================================
-# Check PATH and common locations (Homebrew might be installed but not in PATH)
 BREW_BIN=""
 if command -v brew &>/dev/null; then
     BREW_BIN="$(command -v brew)"
@@ -104,67 +190,106 @@ elif [[ -x "/usr/local/bin/brew" ]]; then
 fi
 
 if [[ -z "$BREW_BIN" ]]; then
+    echo ""
     echo "Installing Homebrew..."
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-    # Add Homebrew to PATH for this script
+    # Add Homebrew to PATH
     if [[ -f "/opt/homebrew/bin/brew" ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
     elif [[ -f "/usr/local/bin/brew" ]]; then
         eval "$(/usr/local/bin/brew shellenv)"
     fi
 else
-    echo "Homebrew already installed"
+    echo "Homebrew already installed: $BREW_BIN"
+fi
+
+# Use local cache if available
+if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]]; then
+    export HOMEBREW_CACHE="$DOTFILES_SOURCE_DIR/.cache/homebrew"
+    export HOMEBREW_NO_AUTO_UPDATE=1
+    echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
 # ============================================================================
-# Configure packages and symlinks (shared with upgrade.sh)
+# Run each profile's setup.sh
 # ============================================================================
-"$DOTFILES_DIR/scripts/upgrade.sh" --profile "$PROFILE"
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "  Running profile setup scripts"
+echo "════════════════════════════════════════════════════════════"
+
+for profile in "${PROFILES[@]}"; do
+    PROFILE_DIR="$PROFILES_DIR/$profile"
+    SETUP_SCRIPT="$PROFILE_DIR/setup.sh"
+
+    if [[ ! -f "$SETUP_SCRIPT" ]]; then
+        echo ""
+        echo "Warning: No setup.sh found for profile '$profile', skipping..."
+        continue
+    fi
+
+    echo ""
+    echo "────────────────────────────────────────────────────────────"
+    echo "  Profile: $profile ($MODE)"
+    echo "────────────────────────────────────────────────────────────"
+
+    # Export useful variables for the profile script
+    export DOTFILES_DIR
+    export PROFILE_DIR
+    export PROFILE_NAME="$profile"
+    export DOTFILES_MODE="$MODE"
+
+    # Run the profile's setup script with mode
+    "$SETUP_SCRIPT" "$MODE"
+done
 
 # ============================================================================
-# Enable Touch ID for sudo
+# Post-install system configuration
 # ============================================================================
-# sudo_local is designed by Apple to survive system updates (unlike /etc/pam.d/sudo)
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "  System configuration"
+echo "════════════════════════════════════════════════════════════"
+
+# Enable Touch ID for sudo
 SUDO_LOCAL="/etc/pam.d/sudo_local"
 if [[ ! -f "$SUDO_LOCAL" ]]; then
     echo "Enabling Touch ID for sudo..."
     echo "auth       sufficient     pam_tid.so" | sudo tee "$SUDO_LOCAL" > /dev/null
-    echo "  ✓ Touch ID enabled for sudo"
+    echo "  ✓ Touch ID enabled"
 else
-    echo "  ✓ Touch ID for sudo already configured"
+    echo "  ✓ Touch ID already configured"
 fi
 
-# ============================================================================
 # Change default shell to Homebrew's zsh
-# ============================================================================
 HOMEBREW_ZSH="$(brew --prefix)/bin/zsh"
+if [[ -x "$HOMEBREW_ZSH" ]]; then
+    if ! grep -q "$HOMEBREW_ZSH" /etc/shells; then
+        echo "Adding Homebrew zsh to /etc/shells..."
+        echo "$HOMEBREW_ZSH" | sudo tee -a /etc/shells > /dev/null
+    fi
 
-# Add Homebrew zsh to allowed shells if not already there
-if ! grep -q "$HOMEBREW_ZSH" /etc/shells; then
-    echo "Adding Homebrew zsh to /etc/shells..."
-    echo "$HOMEBREW_ZSH" | sudo tee -a /etc/shells > /dev/null
+    if [[ "$SHELL" != "$HOMEBREW_ZSH" ]]; then
+        echo "Changing default shell to Homebrew zsh..."
+        sudo chsh -s "$HOMEBREW_ZSH" "$USER"
+    else
+        echo "  ✓ Shell already set to Homebrew zsh"
+    fi
 fi
 
-# Change to Homebrew zsh if not already using it
-if [[ "$SHELL" != "$HOMEBREW_ZSH" ]]; then
-    echo "Changing default shell to Homebrew zsh ($HOMEBREW_ZSH)..."
-    sudo chsh -s "$HOMEBREW_ZSH" "$USER"
-fi
-
-# ============================================================================
-# Run macOS preferences script
-# ============================================================================
+# Run macOS preferences
 if [[ -f "$PLATFORM_DIR/preferences.sh" ]]; then
     echo ""
     echo "Applying macOS preferences..."
     "$PLATFORM_DIR/preferences.sh"
 fi
 
-# ============================================================================
-# Run Dock configuration script
-# ============================================================================
+# Run dock configuration
 if [[ -f "$PLATFORM_DIR/dock.sh" ]]; then
     echo ""
     "$PLATFORM_DIR/dock.sh"
 fi
+
+echo ""
+echo "macOS installation complete!"

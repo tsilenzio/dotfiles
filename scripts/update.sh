@@ -45,8 +45,6 @@ fi
 # Snapshot current profiles (if exists)
 if [[ -f "$DOTFILES_DIR/.profiles" ]]; then
     cp "$DOTFILES_DIR/.profiles" "$SNAPSHOT_DIR/profiles"
-elif [[ -f "$DOTFILES_DIR/.profile" ]]; then
-    cp "$DOTFILES_DIR/.profile" "$SNAPSHOT_DIR/profiles"
 fi
 
 # Create metadata

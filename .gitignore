@@ -1,6 +1,6 @@
 # Machine-specific state (logs, snapshots, profile selection)
 .state/
-.profile
+.profiles
 
 # Local testing cache (installers, Homebrew package cache)
 .cache/*

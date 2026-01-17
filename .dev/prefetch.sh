@@ -5,12 +5,11 @@
 #
 # Examples:
 #   just dev prefetch              # defaults to 'test' profile only
-#   just dev prefetch base         # Brewfile only
-#   just dev prefetch work         # Brewfile + Brewfile.work
-#   just dev prefetch personal     # Brewfile + Brewfile.personal
-#   just dev prefetch work personal # Brewfile + both profiles
-#   just dev prefetch all          # All available Brewfiles
-#   just dev prefetch test         # Brewfile.test only
+#   just dev prefetch core         # Core profile Brewfile
+#   just dev prefetch work         # Core + work profiles
+#   just dev prefetch personal     # Core + personal profiles
+#   just dev prefetch all          # All available profiles
+#   just dev prefetch test         # Test profile only (standalone)
 
 set -e
 
@@ -18,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
 CACHE_DIR="$DOTFILES_DIR/.cache"
 HOMEBREW_CACHE_DIR="$CACHE_DIR/homebrew"
-PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
+PROFILES_DIR="$DOTFILES_DIR/platforms/macos/profiles"
 
 # Colors
 GREEN='\033[0;32m'
@@ -59,24 +58,27 @@ fi
 for profile in "${PROFILES[@]}"; do
     case "$profile" in
         test)
-            [[ -f "$PLATFORM_DIR/Brewfile.test" ]] && BREWFILES+=("$PLATFORM_DIR/Brewfile.test")
-            ;;
-        base)
-            [[ -f "$PLATFORM_DIR/Brewfile" ]] && BREWFILES+=("$PLATFORM_DIR/Brewfile")
+            # Standalone - only test profile
+            BREWFILE="$PROFILES_DIR/test/Brewfile"
+            [[ -f "$BREWFILE" ]] && BREWFILES+=("$BREWFILE")
             ;;
         all)
-            # Add all Brewfiles found
-            for bf in "$PLATFORM_DIR"/Brewfile*; do
+            # Add all profile Brewfiles
+            for profile_dir in "$PROFILES_DIR"/*/; do
+                bf="$profile_dir/Brewfile"
                 [[ -f "$bf" ]] && BREWFILES+=("$bf")
             done
             ;;
         *)
-            # Profile name (work, personal, etc.) - include base + profile
-            [[ -f "$PLATFORM_DIR/Brewfile" ]] && BREWFILES+=("$PLATFORM_DIR/Brewfile")
-            if [[ -f "$PLATFORM_DIR/Brewfile.$profile" ]]; then
-                BREWFILES+=("$PLATFORM_DIR/Brewfile.$profile")
+            # Named profile - include core + named profile
+            CORE_BREWFILE="$PROFILES_DIR/core/Brewfile"
+            [[ -f "$CORE_BREWFILE" ]] && BREWFILES+=("$CORE_BREWFILE")
+
+            PROFILE_BREWFILE="$PROFILES_DIR/$profile/Brewfile"
+            if [[ -f "$PROFILE_BREWFILE" ]]; then
+                BREWFILES+=("$PROFILE_BREWFILE")
             else
-                warn "Brewfile.$profile not found, skipping"
+                warn "Profile '$profile' not found or has no Brewfile, skipping"
             fi
             ;;
     esac
@@ -85,7 +87,6 @@ done
 # Remove duplicates while preserving order (bash 3.x compatible)
 UNIQUE_BREWFILES=()
 for bf in "${BREWFILES[@]}"; do
-    # Check if already in UNIQUE_BREWFILES
     duplicate=false
     for existing in "${UNIQUE_BREWFILES[@]}"; do
         if [[ "$existing" == "$bf" ]]; then
@@ -113,7 +114,9 @@ export HOMEBREW_CACHE="$HOMEBREW_CACHE_DIR"
 
 log "Using Brewfiles:"
 for bf in "${BREWFILES[@]}"; do
-    log "  - $(basename "$bf")"
+    # Show relative path for readability
+    rel_path="${bf#$DOTFILES_DIR/}"
+    log "  - $rel_path"
 done
 
 # Extract and add taps first (required for some formulas)
@@ -143,7 +146,7 @@ done
 PACKAGES=$(echo "$PACKAGES" | grep -v '^$' | sort -u)
 
 if [[ -z "$PACKAGES" ]]; then
-    warn "No packages found in Brewfile"
+    warn "No packages found in Brewfiles"
     exit 0
 fi
 
