@@ -30,19 +30,19 @@ git clone https://github.com/tsilenzio/dotfiles.git ~/.dotfiles
 
 ## Profiles
 
-Profiles are modular configurations that can be combined:
+Profiles are modular configurations with automatic dependency resolution:
 
-| Profile | Description | Notes |
-|---------|-------------|-------|
-| `core` | Essential tools (zsh, git, CLI utilities) | Always included |
-| `personal` | Gaming, entertainment apps | |
-| `work` | Office communication, productivity | |
-| `test` | Minimal packages for VM testing | Standalone |
+| Profile | Description | Requires |
+|---------|-------------|----------|
+| `core` | Essential tools (zsh, git, CLI utilities) | - |
+| `personal` | Gaming, entertainment apps | core |
+| `work` | Office communication, productivity | core |
+| `test` | Minimal packages for VM testing | - |
 
 **Example combinations:**
-- Home machine: `core + personal`
-- Work machine: `core + work`
-- Development: `core + personal + work`
+- Home machine: `--profile personal` (auto-includes core)
+- Work machine: `--profile work` (auto-includes core)
+- Development: `--profile personal --profile work` (auto-includes core)
 
 ## Commands
 
@@ -104,6 +104,7 @@ mkdir -p platforms/macos/profiles/myprofile
 name="My Profile"
 description="Description of this profile"
 order=30
+requires="core"  # Optional: comma-separated dependencies
 ```
 
 3. Add `Brewfile` with packages:
@@ -117,13 +118,19 @@ cask "some-app"
 
 ```bash
 #!/usr/bin/env bash
+set -e
 MODE="${1:-install}"
+
+# Load shared library
+source "$DOTFILES_DIR/scripts/lib/common.sh"
+
 echo "Running myprofile setup ($MODE)..."
 
 # Install Brewfile
-if [[ -f "$PROFILE_DIR/Brewfile" ]]; then
-    brew bundle --file="$PROFILE_DIR/Brewfile"
-fi
+install_brewfile "$PROFILE_DIR/Brewfile"
+
+# Apply config overrides (if profile has config/ directory)
+apply_config_overrides "$PROFILE_DIR"
 
 # Add custom setup here
 ```

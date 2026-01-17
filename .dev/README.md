@@ -106,17 +106,17 @@ Profiles are located in `platforms/macos/profiles/`:
 
 ```
 profiles/
-├── core/           # Essential tools (required)
+├── core/           # Essential tools (no dependencies)
 │   ├── Brewfile
 │   ├── profile.conf
 │   └── setup.sh
-├── personal/       # Gaming, entertainment
-├── work/           # Office, communication
-└── test/           # Minimal VM testing (standalone)
+├── personal/       # Gaming, entertainment (requires core)
+├── work/           # Office, communication (requires core)
+└── test/           # Minimal VM testing (no dependencies)
 ```
 
 Each profile has:
-- `profile.conf` - Metadata (name, description, order, required, standalone)
+- `profile.conf` - Metadata (name, description, order, requires)
 - `Brewfile` - Homebrew packages
 - `setup.sh` - Setup script (receives `install` or `upgrade` as $1)
 
@@ -126,8 +126,7 @@ Each profile has:
 name="Display Name"
 description="What this profile includes"
 order=10              # Lower = earlier in list and execution order
-required=true         # Always included (only for core)
-standalone=true       # Runs alone, skips other profiles (only for test)
+requires="core"       # Comma-separated dependencies (resolved automatically)
 enabled=false         # Hide from menu and skip during upgrades (default: true)
 ```
 

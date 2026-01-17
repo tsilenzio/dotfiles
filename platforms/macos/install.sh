@@ -2,6 +2,7 @@
 
 # macOS Installation Script
 # - Discovers and presents available profiles
+# - Resolves profile dependencies
 # - Handles preflight (sudo caching)
 # - Installs Homebrew
 # - Calls each selected profile's setup.sh
@@ -47,54 +48,135 @@ fi
 echo "Mode: $MODE"
 
 # ============================================================================
-# Profile discovery
+# Profile discovery and dependency resolution
 # ============================================================================
 
+# Get profile config value
+# Usage: get_profile_conf <profile_id> <key> [default]
+get_profile_conf() {
+    local profile_id="$1"
+    local key="$2"
+    local default="${3:-}"
+    local conf_file="$PROFILES_DIR/$profile_id/profile.conf"
+    local value="$default"
+
+    if [[ -f "$conf_file" ]]; then
+        while IFS='=' read -r k v; do
+            [[ -z "$k" || "$k" =~ ^# ]] && continue
+            v="${v%\"}"
+            v="${v#\"}"
+            if [[ "$k" == "$key" ]]; then
+                value="$v"
+                break
+            fi
+        done < "$conf_file"
+    fi
+
+    echo "$value"
+}
+
+# Check if profile exists and is enabled
+# Usage: is_profile_available <profile_id>
+is_profile_available() {
+    local profile_id="$1"
+    local profile_dir="$PROFILES_DIR/$profile_id"
+
+    [[ ! -d "$profile_dir" ]] && return 1
+
+    local enabled=$(get_profile_conf "$profile_id" "enabled" "true")
+    [[ "$enabled" == "false" ]] && return 1
+
+    return 0
+}
+
 # Discover available profiles from directory structure
-# Returns: profile_id|name|description|order|required|standalone (sorted by order)
+# Returns: profile_id|name|description|order|requires (sorted by order)
 discover_profiles() {
     for profile_dir in "$PROFILES_DIR"/*/; do
         [[ ! -d "$profile_dir" ]] && continue
         local profile_id=$(basename "$profile_dir")
-        local conf_file="$profile_dir/profile.conf"
 
-        # Defaults
-        local name="$profile_id"
-        local description=""
-        local order=50
-        local required=false
-        local standalone=false
-        local enabled=true
+        # Skip if not available (disabled, etc.)
+        is_profile_available "$profile_id" || continue
 
-        # Read profile.conf if exists
-        if [[ -f "$conf_file" ]]; then
-            while IFS='=' read -r key value; do
-                [[ -z "$key" || "$key" =~ ^# ]] && continue
-                value="${value%\"}"
-                value="${value#\"}"
-                case "$key" in
-                    name) name="$value" ;;
-                    description) description="$value" ;;
-                    order) order="$value" ;;
-                    required) required="$value" ;;
-                    standalone) standalone="$value" ;;
-                    enabled) enabled="$value" ;;
-                esac
-            done < "$conf_file"
-        fi
+        local name=$(get_profile_conf "$profile_id" "name" "$profile_id")
+        local description=$(get_profile_conf "$profile_id" "description" "")
+        local order=$(get_profile_conf "$profile_id" "order" "50")
+        local requires=$(get_profile_conf "$profile_id" "requires" "")
 
-        # Skip disabled profiles
-        if [[ "$enabled" == "false" ]]; then
-            continue
-        fi
-
-        # Skip standalone profiles (like test) unless in test mode
-        if [[ "$standalone" == "true" && "$TEST_MODE" != "true" ]]; then
-            continue
-        fi
-
-        echo "$profile_id|$name|$description|$order|$required|$standalone"
+        echo "$profile_id|$name|$description|$order|$requires"
     done | sort -t'|' -k4 -n
+}
+
+# Resolve dependencies for a list of profiles (recursive)
+# Usage: resolve_dependencies profile1 profile2 ...
+# Outputs: all profiles including dependencies, in dependency order
+resolve_dependencies() {
+    local -a input_profiles=("$@")
+    local -a resolved=()
+    local -a seen=()
+
+    # Recursive helper
+    resolve_one() {
+        local profile="$1"
+
+        # Skip if already resolved
+        for p in "${resolved[@]}"; do
+            [[ "$p" == "$profile" ]] && return 0
+        done
+
+        # Check for circular dependency
+        for p in "${seen[@]}"; do
+            if [[ "$p" == "$profile" ]]; then
+                echo "Error: Circular dependency detected involving '$profile'" >&2
+                return 1
+            fi
+        done
+
+        seen+=("$profile")
+
+        # Verify profile exists
+        if ! is_profile_available "$profile"; then
+            echo "Error: Profile '$profile' not found or disabled" >&2
+            return 1
+        fi
+
+        # Get and resolve dependencies first
+        local requires=$(get_profile_conf "$profile" "requires" "")
+        if [[ -n "$requires" ]]; then
+            IFS=',' read -ra deps <<< "$requires"
+            for dep in "${deps[@]}"; do
+                dep="${dep// /}"  # Trim whitespace
+                [[ -n "$dep" ]] && resolve_one "$dep"
+            done
+        fi
+
+        # Add this profile after its dependencies
+        resolved+=("$profile")
+    }
+
+    # Resolve each input profile
+    for profile in "${input_profiles[@]}"; do
+        resolve_one "$profile" || return 1
+    done
+
+    # Output resolved profiles
+    printf '%s\n' "${resolved[@]}"
+}
+
+# Sort profiles by order
+# Usage: sort_by_order < profiles_list
+sort_by_order() {
+    local -a profiles=()
+    while IFS= read -r profile; do
+        [[ -n "$profile" ]] && profiles+=("$profile")
+    done
+
+    # Build sortable list: order|profile_id
+    for profile in "${profiles[@]}"; do
+        local order=$(get_profile_conf "$profile" "order" "50")
+        echo "$order|$profile"
+    done | sort -t'|' -k1 -n | cut -d'|' -f2
 }
 
 # ============================================================================
@@ -112,33 +194,30 @@ if [[ ${#PROFILES[@]} -eq 0 ]]; then
         echo ""
 
         declare -a PROFILE_IDS=()
-        declare -a REQUIRED_PROFILES=()
         MENU_NUM=0
 
-        while IFS='|' read -r id name desc order required standalone; do
+        while IFS='|' read -r id name desc order requires; do
             [[ -z "$id" ]] && continue
 
-            if [[ "$required" == "true" ]]; then
-                REQUIRED_PROFILES+=("$id")
-                echo "  *) $name - $desc [always included]"
+            MENU_NUM=$((MENU_NUM + 1))
+            PROFILE_IDS+=("$id")
+
+            # Show dependencies if any
+            if [[ -n "$requires" ]]; then
+                echo "  $MENU_NUM) $name - $desc [requires: $requires]"
             else
-                MENU_NUM=$((MENU_NUM + 1))
-                PROFILE_IDS+=("$id")
                 echo "  $MENU_NUM) $name - $desc"
             fi
         done < <(discover_profiles)
 
         echo ""
         echo "Select profiles (comma-separated, e.g., 1,2):"
-        echo "  Enter) Required profiles only"
+        echo "Dependencies will be resolved automatically."
         echo ""
 
         echo -n "Selection: "
         read -r SELECTION < /dev/tty
         echo "$SELECTION"  # Echo to log
-
-        # Start with required profiles
-        PROFILES=("${REQUIRED_PROFILES[@]}")
 
         if [[ -n "$SELECTION" ]]; then
             SELECTION="${SELECTION//,/ }"
@@ -150,22 +229,28 @@ if [[ ${#PROFILES[@]} -eq 0 ]]; then
                 fi
             done
         fi
+
+        # If nothing selected, show error
+        if [[ ${#PROFILES[@]} -eq 0 ]]; then
+            echo "Error: No profiles selected"
+            exit 1
+        fi
     fi
 fi
 
-# Ensure required profiles are always included
-while IFS='|' read -r id name desc order required standalone; do
-    [[ -z "$id" ]] && continue
-    if [[ "$required" == "true" && ! " ${PROFILES[*]} " =~ " $id " ]]; then
-        PROFILES=("$id" "${PROFILES[@]}")
-    fi
-done < <(discover_profiles)
-
+# ============================================================================
+# Resolve dependencies and sort by order
+# ============================================================================
 echo ""
-echo "Selected profiles: ${PROFILES[*]}"
+echo "Resolving dependencies..."
 
-# Save profiles for future upgrades
-printf '%s\n' "${PROFILES[@]}" > "$PROFILES_FILE"
+RESOLVED_LIST=$(resolve_dependencies "${PROFILES[@]}") || exit 1
+mapfile -t RESOLVED_PROFILES < <(echo "$RESOLVED_LIST" | sort_by_order)
+
+echo "Installation order: ${RESOLVED_PROFILES[*]}"
+
+# Save resolved profiles for future upgrades
+printf '%s\n' "${RESOLVED_PROFILES[@]}" > "$PROFILES_FILE"
 
 # ============================================================================
 # Preflight: Request permissions and setup temporary sudo
@@ -219,7 +304,7 @@ echo "════════════════════════�
 echo "  Running profile setup scripts"
 echo "════════════════════════════════════════════════════════════"
 
-for profile in "${PROFILES[@]}"; do
+for profile in "${RESOLVED_PROFILES[@]}"; do
     PROFILE_DIR="$PROFILES_DIR/$profile"
     SETUP_SCRIPT="$PROFILE_DIR/setup.sh"
 
