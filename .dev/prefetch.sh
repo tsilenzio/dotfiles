@@ -115,7 +115,7 @@ export HOMEBREW_CACHE="$HOMEBREW_CACHE_DIR"
 log "Using Brewfiles:"
 for bf in "${BREWFILES[@]}"; do
     # Show relative path for readability
-    rel_path="${bf#$DOTFILES_DIR/}"
+    rel_path="${bf#"$DOTFILES_DIR"/}"
     log "  - $rel_path"
 done
 

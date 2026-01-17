@@ -14,18 +14,38 @@ default:
 setup:
     "{{DEV_DIR}}/setup.sh"
 
-# Pre-fetch Homebrew packages to .cache/homebrew/
-# Usage: just dev prefetch [profiles...]
-#   just dev prefetch              # test only (default)
-#   just dev prefetch work         # base + work
-#   just dev prefetch all          # all Brewfiles
+# Pre-fetch Homebrew packages: test (default), work, personal, all
 prefetch *args:
     "{{DEV_DIR}}/prefetch.sh" {{args}}
 
-# Run bootstrap in test mode (minimal packages)
-bootstrap:
-    "{{DOTFILES_DIR}}/bootstrap.sh" --test
+# Run bootstrap: local (default) or curl (emulates curl|bash)
+bootstrap mode="local" *args:
+    #!/usr/bin/env bash
+    set -e
+    cd "{{DOTFILES_DIR}}"
+    if [[ "{{mode}}" == "curl" ]]; then
+        echo "Emulating: curl ... | bash -s -- --with-hidden test {{args}}"
+        cat bootstrap.sh | bash -s -- --with-hidden test {{args}}
+    else
+        ./bootstrap.sh --with-hidden test {{args}}
+    fi
 
-# Run install directly in test mode (skips copy step)
+# Run install with test profile visible
 install:
-    "{{DOTFILES_DIR}}/install.sh" --test
+    "{{DOTFILES_DIR}}/install.sh" --with-hidden test
+
+# Run linters (shellcheck + zsh syntax)
+lint:
+    #!/usr/bin/env bash
+    set -e
+    echo "Running ShellCheck..."
+    find "{{DOTFILES_DIR}}" -type f \( -name "*.sh" -o -name "*.bash" \) \
+        ! -path "*/.git/*" ! -path "*/.cache/*" \
+        -exec shellcheck --severity=warning -x {} +
+    echo ""
+    echo "Checking Zsh syntax..."
+    find "{{DOTFILES_DIR}}" -type f \( -name "zshrc*" -o -name "zshenv*" -o -name "*.zsh" \) \
+        ! -path "*/.git/*" ! -path "*/.cache/*" \
+        -exec zsh -n {} \;
+    echo ""
+    echo "All checks passed!"

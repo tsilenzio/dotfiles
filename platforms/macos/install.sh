@@ -18,11 +18,24 @@ PROFILES_FILE="$DOTFILES_DIR/.profiles"
 # Parse flags
 # ============================================================================
 PROFILES=()
+SHOW_HIDDEN=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --profile=*)
+            PROFILES+=("${1#*=}")
+            shift
+            ;;
         --profile)
             PROFILES+=("$2")
+            shift 2
+            ;;
+        --with-hidden=*)
+            SHOW_HIDDEN+=("${1#*=}")
+            shift
+            ;;
+        --with-hidden)
+            SHOW_HIDDEN+=("$2")
             shift 2
             ;;
         *)
@@ -87,7 +100,7 @@ is_profile_available() {
 
 # Discover available profiles from directory structure
 # Returns: profile_id|name|description|order|requires (sorted by order)
-# Hidden profiles are excluded from menu but can be used with --profile
+# Hidden profiles are excluded unless in SHOW_HIDDEN array or use --profile directly
 discover_profiles() {
     for profile_dir in "$PROFILES_DIR"/*/; do
         [[ ! -d "$profile_dir" ]] && continue
@@ -97,10 +110,13 @@ discover_profiles() {
         # Skip if not available (disabled, etc.)
         is_profile_available "$profile_id" || continue
 
-        # Skip hidden profiles (use --profile <name> to select directly)
+        # Skip hidden profiles unless explicitly shown via --with-hidden
         local hidden
         hidden=$(get_profile_conf "$profile_id" "hidden" "false")
-        [[ "$hidden" == "true" ]] && continue
+        if [[ "$hidden" == "true" ]]; then
+            # shellcheck disable=SC2076
+            [[ ! " ${SHOW_HIDDEN[*]} " =~ " $profile_id " ]] && continue
+        fi
 
         local name description order requires
         name=$(get_profile_conf "$profile_id" "name" "$profile_id")

@@ -73,8 +73,8 @@ echo ""
 
 # Start a fresh login shell
 if [[ "$OS" == "macos" ]]; then
-    USER_SHELL=$(dscl . -read /Users/$USER UserShell 2>/dev/null | awk '{print $2}')
+    USER_SHELL=$(dscl . -read "/Users/$USER" UserShell 2>/dev/null | awk '{print $2}')
 else
-    USER_SHELL=$(getent passwd $USER 2>/dev/null | cut -d: -f7)
+    USER_SHELL=$(getent passwd "$USER" 2>/dev/null | cut -d: -f7)
 fi
 exec "${USER_SHELL:-$SHELL}" -l

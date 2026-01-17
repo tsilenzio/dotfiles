@@ -104,7 +104,7 @@ apply_config_overrides() {
     [[ ! -d "$config_dir" ]] && return 0
 
     while IFS= read -r -d '' profile_file; do
-        local rel_path="${profile_file#$config_dir/}"
+        local rel_path="${profile_file#"$config_dir"/}"
         local dest=""
 
         case "$rel_path" in
