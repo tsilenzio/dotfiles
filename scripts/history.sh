@@ -4,7 +4,7 @@
 # Usage: ./scripts/history.sh
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$DOTFILES_DIR"
+cd "$DOTFILES_DIR" || exit 1
 
 SNAPSHOT_BASE="$DOTFILES_DIR/.state/snapshots"
 

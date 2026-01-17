@@ -18,6 +18,7 @@ fi
 # Fetch first to check if there are updates
 git fetch
 LOCAL=$(git rev-parse HEAD)
+# shellcheck disable=SC1083
 REMOTE=$(git rev-parse @{u} 2>/dev/null || echo "$LOCAL")
 
 if [[ "$LOCAL" == "$REMOTE" ]]; then
@@ -68,6 +69,7 @@ fi
 # Show incoming changes
 echo ""
 echo "Incoming changes:"
+# shellcheck disable=SC1083
 git log --oneline HEAD..@{u}
 echo ""
 

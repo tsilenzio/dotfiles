@@ -57,7 +57,8 @@ is_profile_available() {
 
     [[ ! -d "$profile_dir" ]] && return 1
 
-    local enabled=$(get_profile_conf "$profile_id" "enabled" "true")
+    local enabled
+    enabled=$(get_profile_conf "$profile_id" "enabled" "true")
     [[ "$enabled" == "false" ]] && return 1
 
     return 0
@@ -90,7 +91,8 @@ resolve_dependencies() {
             return 1
         fi
 
-        local requires=$(get_profile_conf "$profile" "requires" "")
+        local requires
+        requires=$(get_profile_conf "$profile" "requires" "")
         if [[ -n "$requires" ]]; then
             IFS=',' read -ra deps <<< "$requires"
             for dep in "${deps[@]}"; do
@@ -117,7 +119,8 @@ sort_by_order() {
     done
 
     for profile in "${profiles[@]}"; do
-        local order=$(get_profile_conf "$profile" "order" "50")
+        local order
+        order=$(get_profile_conf "$profile" "order" "50")
         echo "$order|$profile"
     done | sort -t'|' -k1 -n | cut -d'|' -f2
 }
@@ -126,13 +129,11 @@ sort_by_order() {
 # Parse flags
 # ============================================================================
 PROFILES=()
-MANUAL_PROFILES=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --profile)
             PROFILES+=("$2")
-            MANUAL_PROFILES=true
             shift 2
             ;;
         *)
