@@ -1,6 +1,9 @@
-# Work Brewfile (additions to base Brewfile)
-# These packages are installed only for work environments
+# Work Brewfile
+# Communication and productivity tools for work environments
 
 cask "microsoft-outlook"                # Microsoft Outlook email client
 cask "slack"                            # Team communication
+cask "spotify"                          # Music streaming
+cask "zoom"                             # Video conferencing
+cask "conductor"                        # Window/app switcher
 cask "reflector"                        # Mobile screen mirroring

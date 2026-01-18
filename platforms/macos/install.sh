@@ -14,6 +14,9 @@ PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
 PROFILES_DIR="$PLATFORM_DIR/profiles"
 PROFILES_FILE="$DOTFILES_DIR/.profiles"
 
+# Load shared library (provides get_profile_conf, is_profile_available, resolve_dependencies, sort_by_order)
+source "$DOTFILES_DIR/scripts/lib/common.sh"
+
 # ============================================================================
 # Parse flags
 # ============================================================================
@@ -56,152 +59,6 @@ fi
 echo "Mode: $MODE"
 
 # ============================================================================
-# Profile discovery and dependency resolution
-# ============================================================================
-
-# Get profile config value
-# Usage: get_profile_conf <profile_id> <key> [default]
-get_profile_conf() {
-    local profile_id="$1"
-    local key="$2"
-    local default="${3:-}"
-    local conf_file="$PROFILES_DIR/$profile_id/profile.conf"
-    local value="$default"
-
-    if [[ -f "$conf_file" ]]; then
-        while IFS='=' read -r k v; do
-            [[ -z "$k" || "$k" =~ ^# ]] && continue
-            v="${v%\"}"
-            v="${v#\"}"
-            if [[ "$k" == "$key" ]]; then
-                value="$v"
-                break
-            fi
-        done < "$conf_file"
-    fi
-
-    echo "$value"
-}
-
-# Check if profile exists and is enabled
-# Usage: is_profile_available <profile_id>
-is_profile_available() {
-    local profile_id="$1"
-    local profile_dir="$PROFILES_DIR/$profile_id"
-
-    [[ ! -d "$profile_dir" ]] && return 1
-
-    local enabled
-    enabled=$(get_profile_conf "$profile_id" "enabled" "true")
-    [[ "$enabled" == "false" ]] && return 1
-
-    return 0
-}
-
-# Discover available profiles from directory structure
-# Returns: profile_id|name|description|order|requires (sorted by order)
-# Hidden profiles are excluded unless in SHOW_HIDDEN array or use --profile directly
-discover_profiles() {
-    for profile_dir in "$PROFILES_DIR"/*/; do
-        [[ ! -d "$profile_dir" ]] && continue
-        local profile_id
-        profile_id=$(basename "$profile_dir")
-
-        # Skip if not available (disabled, etc.)
-        is_profile_available "$profile_id" || continue
-
-        # Skip hidden profiles unless explicitly shown via --with-hidden
-        local hidden
-        hidden=$(get_profile_conf "$profile_id" "hidden" "false")
-        if [[ "$hidden" == "true" ]]; then
-            # shellcheck disable=SC2076
-            [[ ! " ${SHOW_HIDDEN[*]} " =~ " $profile_id " ]] && continue
-        fi
-
-        local name description order requires
-        name=$(get_profile_conf "$profile_id" "name" "$profile_id")
-        description=$(get_profile_conf "$profile_id" "description" "")
-        order=$(get_profile_conf "$profile_id" "order" "50")
-        requires=$(get_profile_conf "$profile_id" "requires" "")
-
-        echo "$profile_id|$name|$description|$order|$requires"
-    done | sort -t'|' -k4 -n
-}
-
-# Resolve dependencies for a list of profiles (recursive)
-# Usage: resolve_dependencies profile1 profile2 ...
-# Outputs: all profiles including dependencies, in dependency order
-resolve_dependencies() {
-    local -a input_profiles=("$@")
-    local -a resolved=()
-    local -a seen=()
-
-    # Recursive helper
-    resolve_one() {
-        local profile="$1"
-
-        # Skip if already resolved
-        for p in "${resolved[@]}"; do
-            [[ "$p" == "$profile" ]] && return 0
-        done
-
-        # Check for circular dependency
-        for p in "${seen[@]}"; do
-            if [[ "$p" == "$profile" ]]; then
-                echo "Error: Circular dependency detected involving '$profile'" >&2
-                return 1
-            fi
-        done
-
-        seen+=("$profile")
-
-        # Verify profile exists
-        if ! is_profile_available "$profile"; then
-            echo "Error: Profile '$profile' not found or disabled" >&2
-            return 1
-        fi
-
-        # Get and resolve dependencies first
-        local requires
-        requires=$(get_profile_conf "$profile" "requires" "")
-        if [[ -n "$requires" ]]; then
-            IFS=',' read -ra deps <<< "$requires"
-            for dep in "${deps[@]}"; do
-                dep="${dep// /}"  # Trim whitespace
-                [[ -n "$dep" ]] && resolve_one "$dep"
-            done
-        fi
-
-        # Add this profile after its dependencies
-        resolved+=("$profile")
-    }
-
-    # Resolve each input profile
-    for profile in "${input_profiles[@]}"; do
-        resolve_one "$profile" || return 1
-    done
-
-    # Output resolved profiles
-    printf '%s\n' "${resolved[@]}"
-}
-
-# Sort profiles by order
-# Usage: sort_by_order < profiles_list
-sort_by_order() {
-    local -a profiles=()
-    while IFS= read -r profile; do
-        [[ -n "$profile" ]] && profiles+=("$profile")
-    done
-
-    # Build sortable list: order|profile_id
-    for profile in "${profiles[@]}"; do
-        local order
-        order=$(get_profile_conf "$profile" "order" "50")
-        echo "$order|$profile"
-    done | sort -t'|' -k1 -n | cut -d'|' -f2
-}
-
-# ============================================================================
 # Profile selection (if not provided via flags)
 # ============================================================================
 if [[ ${#PROFILES[@]} -eq 0 ]]; then
@@ -218,7 +75,7 @@ if [[ ${#PROFILES[@]} -eq 0 ]]; then
         declare -a PROFILE_IDS=()
         MENU_NUM=0
 
-        while IFS='|' read -r id name desc order requires; do
+        while IFS='|' read -r id name desc _order requires; do
             [[ -z "$id" ]] && continue
 
             MENU_NUM=$((MENU_NUM + 1))

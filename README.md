@@ -35,14 +35,15 @@ Profiles are modular configurations with automatic dependency resolution:
 | Profile | Description | Requires |
 |---------|-------------|----------|
 | `core` | Essential tools (zsh, git, CLI utilities) | - |
-| `personal` | Gaming, entertainment apps | core |
-| `work` | Office communication, productivity | core |
-| `test` | Minimal packages for VM testing | - |
+| `develop` | Development tools, IDEs, containers | core |
+| `personal` | Gaming, entertainment, MS Office | core |
+| `work` | Office communication (Outlook, Slack, Zoom) | core |
+| `test` | Minimal packages for VM testing (hidden) | - |
 
 **Example combinations:**
-- Home machine: `--profile personal` (auto-includes core)
-- Work machine: `--profile work` (auto-includes core)
-- Development: `--profile personal --profile work` (auto-includes core)
+- Personal machine: `--profile personal` (auto-includes core)
+- Work machine: `--profile work --profile develop` (auto-includes core)
+- Full setup: `--profile personal --profile work --profile develop`
 
 ## Commands
 
@@ -74,6 +75,7 @@ just secrets ...      # Secrets management (init, encrypt, decrypt)
 │       │   │   ├── Brewfile
 │       │   │   ├── profile.conf
 │       │   │   └── setup.sh
+│       │   ├── develop/
 │       │   ├── personal/
 │       │   ├── work/
 │       │   └── test/
