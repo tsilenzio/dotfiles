@@ -30,7 +30,7 @@ bootstrap mode="local" *args:
         ./bootstrap.sh --with-hidden test {{args}}
     fi
 
-# Run install with test profile visible
+# Run install with test bundle visible
 install:
     "{{DOTFILES_DIR}}/install.sh" --with-hidden test
 

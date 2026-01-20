@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 
 # macOS Installation Script
-# - Discovers and presents available profiles
-# - Resolves profile dependencies
+# - Discovers and presents available bundles
+# - Resolves bundle dependencies
 # - Handles preflight (sudo caching)
 # - Installs Homebrew
-# - Calls each selected profile's setup.sh
+# - Calls each selected bundle's setup.sh
 
 set -e
 
 DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
-PROFILES_DIR="$PLATFORM_DIR/profiles"
-PROFILES_FILE="$DOTFILES_DIR/.profiles"
+BUNDLES_DIR="$PLATFORM_DIR/bundles"
+BUNDLES_FILE="$DOTFILES_DIR/.bundles"
 
-# Load shared library (provides get_profile_conf, is_profile_available, resolve_dependencies, sort_by_order)
+# Load shared library (provides get_bundle_conf, is_bundle_available, resolve_dependencies, sort_by_order)
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 # ============================================================================
 # Parse flags
 # ============================================================================
-PROFILES=()
+BUNDLES=()
 SHOW_HIDDEN=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --profile=*)
-            PROFILES+=("${1#*=}")
+        --bundle=*)
+            BUNDLES+=("${1#*=}")
             shift
             ;;
-        --profile)
-            PROFILES+=("$2")
+        --bundle)
+            BUNDLES+=("$2")
             shift 2
             ;;
         --with-hidden=*)
@@ -50,7 +50,7 @@ done
 # ============================================================================
 # Determine install vs upgrade mode
 # ============================================================================
-if [[ -f "$PROFILES_FILE" ]]; then
+if [[ -f "$BUNDLES_FILE" ]]; then
     MODE="upgrade"
 else
     MODE="install"
@@ -59,27 +59,30 @@ fi
 echo "Mode: $MODE"
 
 # ============================================================================
-# Profile selection (if not provided via flags)
+# Bundle selection (if not provided via flags)
 # ============================================================================
-if [[ ${#PROFILES[@]} -eq 0 ]]; then
-    if [[ "$MODE" == "upgrade" && -f "$PROFILES_FILE" ]]; then
-        # Upgrade mode - use saved profiles
-        mapfile -t PROFILES < "$PROFILES_FILE"
-        echo "Using saved profiles: ${PROFILES[*]}"
+if [[ ${#BUNDLES[@]} -eq 0 ]]; then
+    if [[ "$MODE" == "upgrade" && -f "$BUNDLES_FILE" ]]; then
+        # Upgrade mode - use saved bundles
+        BUNDLES=()
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -n "$line" ]] && BUNDLES+=("$line")
+        done < "$BUNDLES_FILE"
+        echo "Using saved bundles: ${BUNDLES[*]}"
     else
         # Install mode - prompt for selection
         echo ""
-        echo "Available profiles:"
+        echo "Available bundles:"
         echo ""
 
-        declare -a PROFILE_IDS=()
+        declare -a BUNDLE_IDS=()
         MENU_NUM=0
 
         while IFS='|' read -r id name desc _order requires; do
             [[ -z "$id" ]] && continue
 
             MENU_NUM=$((MENU_NUM + 1))
-            PROFILE_IDS+=("$id")
+            BUNDLE_IDS+=("$id")
 
             # Show dependencies if any
             if [[ -n "$requires" ]]; then
@@ -87,10 +90,10 @@ if [[ ${#PROFILES[@]} -eq 0 ]]; then
             else
                 echo "  $MENU_NUM) $name - $desc"
             fi
-        done < <(discover_profiles)
+        done < <(discover_bundles)
 
         echo ""
-        echo "Select profiles (comma-separated, e.g., 1,2):"
+        echo "Select bundles (comma-separated, e.g., 1,2):"
         echo "Dependencies will be resolved automatically."
         echo ""
 
@@ -101,18 +104,18 @@ if [[ ${#PROFILES[@]} -eq 0 ]]; then
         if [[ -n "$SELECTION" ]]; then
             SELECTION="${SELECTION//,/ }"
             for choice in $SELECTION; do
-                if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#PROFILE_IDS[@]} ]]; then
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#BUNDLE_IDS[@]} ]]; then
                     idx=$((choice - 1))
-                    selected_id="${PROFILE_IDS[$idx]}"
+                    selected_id="${BUNDLE_IDS[$idx]}"
                     # shellcheck disable=SC2076
-                    [[ ! " ${PROFILES[*]} " =~ " $selected_id " ]] && PROFILES+=("$selected_id")
+                    [[ ! " ${BUNDLES[*]} " =~ " $selected_id " ]] && BUNDLES+=("$selected_id")
                 fi
             done
         fi
 
         # If nothing selected, show error
-        if [[ ${#PROFILES[@]} -eq 0 ]]; then
-            echo "Error: No profiles selected"
+        if [[ ${#BUNDLES[@]} -eq 0 ]]; then
+            echo "Error: No bundles selected"
             exit 1
         fi
     fi
@@ -124,13 +127,16 @@ fi
 echo ""
 echo "Resolving dependencies..."
 
-RESOLVED_LIST=$(resolve_dependencies "${PROFILES[@]}") || exit 1
-mapfile -t RESOLVED_PROFILES < <(echo "$RESOLVED_LIST" | sort_by_order)
+RESOLVED_LIST=$(resolve_dependencies "${BUNDLES[@]}") || exit 1
+RESOLVED_BUNDLES=()
+while IFS= read -r line; do
+    [[ -n "$line" ]] && RESOLVED_BUNDLES+=("$line")
+done < <(echo "$RESOLVED_LIST" | sort_by_order)
 
-echo "Installation order: ${RESOLVED_PROFILES[*]}"
+echo "Installation order: ${RESOLVED_BUNDLES[*]}"
 
-# Save resolved profiles for future upgrades
-printf '%s\n' "${RESOLVED_PROFILES[@]}" > "$PROFILES_FILE"
+# Save resolved bundles for future upgrades
+printf '%s\n' "${RESOLVED_BUNDLES[@]}" > "$BUNDLES_FILE"
 
 # ============================================================================
 # Preflight: Request permissions and setup temporary sudo
@@ -177,37 +183,44 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
 fi
 
 # ============================================================================
-# Run each profile's setup.sh
+# Run each bundle's setup.sh
 # ============================================================================
 echo ""
 echo "════════════════════════════════════════════════════════════"
-echo "  Running profile setup scripts"
+echo "  Running bundle setup scripts"
 echo "════════════════════════════════════════════════════════════"
 
-for profile in "${RESOLVED_PROFILES[@]}"; do
-    PROFILE_DIR="$PROFILES_DIR/$profile"
-    SETUP_SCRIPT="$PROFILE_DIR/setup.sh"
+for bundle in "${RESOLVED_BUNDLES[@]}"; do
+    BUNDLE_DIR="$BUNDLES_DIR/$bundle"
+    SETUP_SCRIPT="$BUNDLE_DIR/setup.sh"
 
     if [[ ! -f "$SETUP_SCRIPT" ]]; then
         echo ""
-        echo "Warning: No setup.sh found for profile '$profile', skipping..."
+        echo "Warning: No setup.sh found for bundle '$bundle', skipping..."
         continue
     fi
 
     echo ""
     echo "────────────────────────────────────────────────────────────"
-    echo "  Profile: $profile ($MODE)"
+    echo "  Bundle: $bundle ($MODE)"
     echo "────────────────────────────────────────────────────────────"
 
-    # Export useful variables for the profile script
+    # Export useful variables for the bundle script
     export DOTFILES_DIR
-    export PROFILE_DIR
-    export PROFILE_NAME="$profile"
+    export BUNDLE_DIR
+    export BUNDLE_NAME="$bundle"
     export DOTFILES_MODE="$MODE"
 
-    # Run the profile's setup script with mode
+    # Run the bundle's setup script with mode
     "$SETUP_SCRIPT" "$MODE"
 done
+
+# ============================================================================
+# Setup loaded/ symlinks for active bundles
+# ============================================================================
+echo ""
+echo "Setting up loaded/ symlinks..."
+setup_loaded_symlinks "${RESOLVED_BUNDLES[@]}"
 
 # ============================================================================
 # Post-install system configuration

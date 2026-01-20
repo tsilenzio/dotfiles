@@ -36,7 +36,7 @@ echo "$TAGS" | while read -r tag; do
     SNAPSHOT_DIR="$SNAPSHOT_BASE/$TIMESTAMP"
     if [[ -d "$SNAPSHOT_DIR" ]]; then
         [[ -f "$SNAPSHOT_DIR/Brewfile" ]] && INDICATORS+=" [brew]"
-        [[ -f "$SNAPSHOT_DIR/profiles" ]] && INDICATORS+=" [profiles]"
+        [[ -f "$SNAPSHOT_DIR/bundles" ]] && INDICATORS+=" [bundles]"
     fi
 
     echo "  $TIMESTAMP  ($HASH)  $DISPLAY_DATE$INDICATORS"

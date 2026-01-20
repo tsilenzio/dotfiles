@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
 # Pre-fetch Homebrew packages to local .cache/homebrew/
-# Usage: just dev prefetch [profiles...]
+# Usage: just dev prefetch [bundles...]
 #
 # Examples:
-#   just dev prefetch              # defaults to 'test' profile only
-#   just dev prefetch core         # Core profile Brewfile
-#   just dev prefetch work         # Core + work profiles
-#   just dev prefetch personal     # Core + personal profiles
-#   just dev prefetch all          # All available profiles
-#   just dev prefetch test         # Test profile only (standalone)
+#   just dev prefetch              # defaults to 'test' bundle only
+#   just dev prefetch core         # Core bundle Brewfile
+#   just dev prefetch work         # Core + work bundles
+#   just dev prefetch personal     # Core + personal bundles
+#   just dev prefetch all          # All available bundles
+#   just dev prefetch test         # Test bundle only (standalone)
 
 set -e
 
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
 CACHE_DIR="$DOTFILES_DIR/.cache"
 HOMEBREW_CACHE_DIR="$CACHE_DIR/homebrew"
-PROFILES_DIR="$DOTFILES_DIR/platforms/macos/profiles"
+BUNDLES_DIR="$DOTFILES_DIR/platforms/macos/bundles"
 
 # Colors
 GREEN='\033[0;32m'
@@ -48,37 +48,37 @@ fi
 # Determine which Brewfiles to use
 # ============================================================================
 BREWFILES=()
-PROFILES=("$@")
+BUNDLES=("$@")
 
 # Default to 'test' if no arguments
-if [[ ${#PROFILES[@]} -eq 0 ]]; then
-    PROFILES=("test")
+if [[ ${#BUNDLES[@]} -eq 0 ]]; then
+    BUNDLES=("test")
 fi
 
-for profile in "${PROFILES[@]}"; do
-    case "$profile" in
+for bundle in "${BUNDLES[@]}"; do
+    case "$bundle" in
         test)
-            # Standalone - only test profile
-            BREWFILE="$PROFILES_DIR/test/Brewfile"
+            # Standalone - only test bundle
+            BREWFILE="$BUNDLES_DIR/test/Brewfile"
             [[ -f "$BREWFILE" ]] && BREWFILES+=("$BREWFILE")
             ;;
         all)
-            # Add all profile Brewfiles
-            for profile_dir in "$PROFILES_DIR"/*/; do
-                bf="$profile_dir/Brewfile"
+            # Add all bundle Brewfiles
+            for bundle_dir in "$BUNDLES_DIR"/*/; do
+                bf="$bundle_dir/Brewfile"
                 [[ -f "$bf" ]] && BREWFILES+=("$bf")
             done
             ;;
         *)
-            # Named profile - include core + named profile
-            CORE_BREWFILE="$PROFILES_DIR/core/Brewfile"
+            # Named bundle - include core + named bundle
+            CORE_BREWFILE="$BUNDLES_DIR/core/Brewfile"
             [[ -f "$CORE_BREWFILE" ]] && BREWFILES+=("$CORE_BREWFILE")
 
-            PROFILE_BREWFILE="$PROFILES_DIR/$profile/Brewfile"
-            if [[ -f "$PROFILE_BREWFILE" ]]; then
-                BREWFILES+=("$PROFILE_BREWFILE")
+            BUNDLE_BREWFILE="$BUNDLES_DIR/$bundle/Brewfile"
+            if [[ -f "$BUNDLE_BREWFILE" ]]; then
+                BREWFILES+=("$BUNDLE_BREWFILE")
             else
-                warn "Profile '$profile' not found or has no Brewfile, skipping"
+                warn "Bundle '$bundle' not found or has no Brewfile, skipping"
             fi
             ;;
     esac
