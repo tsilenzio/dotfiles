@@ -17,13 +17,13 @@ just dev bootstrap    # Run bootstrap in test mode
 ## Remote Installation
 
 ```bash
-# Interactive (prompts for profile selection via /dev/tty)
+# Interactive (prompts for bundle selection via /dev/tty)
 curl -fsSL https://raw.githubusercontent.com/tsilenzio/dotfiles/main/bootstrap.sh | bash
 
-# Non-interactive with specific profiles
-curl -fsSL https://... | bash -s -- --profile core --profile personal
+# Non-interactive with specific bundles
+curl -fsSL https://... | bash -s -- --bundle core --bundle personal
 
-# Show hidden test profile in menu
+# Show hidden test bundle in menu
 curl -fsSL https://... | bash -s -- --with-hidden test
 ```
 
@@ -35,8 +35,8 @@ To test the piped install behavior:
 # Mimics: curl ... | bash
 cat bootstrap.sh | bash
 
-# Mimics: curl ... | bash -s -- --profile core --profile work
-cat bootstrap.sh | bash -s -- --profile core --profile work
+# Mimics: curl ... | bash -s -- --bundle core --bundle work
+cat bootstrap.sh | bash -s -- --bundle core --bundle work
 
 # Mimics: curl ... | bash -s -- --with-hidden test
 cat bootstrap.sh | bash -s -- --with-hidden test
@@ -55,25 +55,25 @@ This triggers the "running from curl pipe" code path rather than the local copy 
 ```bash
 just dev              # Show available dev commands
 just dev setup        # Install CLT + Homebrew from cached installers
-just dev prefetch     # Pre-fetch packages (see profiles below)
-just dev bootstrap    # Run bootstrap.sh with --with-hidden test (shows test profile)
+just dev prefetch     # Pre-fetch packages (see bundles below)
+just dev bootstrap    # Run bootstrap.sh with --with-hidden test (shows test bundle)
 just dev bootstrap curl  # Emulate curl|bash behavior
-just dev install      # Run install.sh with --with-hidden test (shows test profile)
+just dev install      # Run install.sh with --with-hidden test (shows test bundle)
 just dev lint         # Run shellcheck + zsh syntax checks
 ```
 
-### Prefetch Profiles
+### Prefetch Bundles
 
 ```bash
 just dev prefetch              # test only (default, minimal)
-just dev prefetch core         # Core profile packages
+just dev prefetch core         # Core bundle packages
 just dev prefetch develop      # Core + develop packages
 just dev prefetch work         # Core + work packages
 just dev prefetch personal     # Core + personal packages
-just dev prefetch all          # All profiles
+just dev prefetch all          # All bundles
 ```
 
-The `--with-hidden test` flag shows the hidden "Test" profile in the menu for quick VM testing.
+The `--with-hidden test` flag shows the hidden "Test" bundle in the menu for quick VM testing.
 
 ## Testing Workflow
 
@@ -89,7 +89,7 @@ Then pre-fetch Homebrew packages:
 just dev prefetch
 ```
 
-This downloads packages from the test profile's Brewfile to `.cache/homebrew/`.
+This downloads packages from the test bundle's Brewfile to `.cache/homebrew/`.
 
 ### 2. Copy to VM
 
@@ -103,15 +103,15 @@ just dev setup       # Installs CLT and Homebrew from cache (offline)
 just dev bootstrap   # Runs bootstrap (needs network for formula metadata, uses cache for bottles)
 ```
 
-## Profile System
+## Bundle System
 
-Profiles are located in `platforms/macos/profiles/`:
+Bundles are located in `platforms/macos/bundles/`:
 
 ```
-profiles/
+bundles/
 ├── core/           # Essential tools (no dependencies)
 │   ├── Brewfile
-│   ├── profile.conf
+│   ├── bundle.conf
 │   └── setup.sh
 ├── develop/        # Development tools, IDEs (requires core)
 ├── personal/       # Gaming, entertainment (requires core)
@@ -119,19 +119,19 @@ profiles/
 └── test/           # Minimal VM testing (hidden, no dependencies)
 ```
 
-Each profile has:
-- `profile.conf` - Metadata (name, description, order, requires)
+Each bundle has:
+- `bundle.conf` - Metadata (name, description, order, requires)
 - `Brewfile` - Homebrew packages
 - `setup.sh` - Setup script (receives `install` or `upgrade` as $1)
 
-### profile.conf Options
+### bundle.conf Options
 
 ```bash
 name="Display Name"
-description="What this profile includes"
+description="What this bundle includes"
 order=10              # Lower = earlier in list and execution order
 requires="core"       # Comma-separated dependencies (resolved automatically)
-hidden=true           # Hide from menu, use --profile <name> directly (default: false)
+hidden=true           # Hide from menu, use --bundle <name> directly (default: false)
 enabled=false         # Disable entirely, skip during upgrades (default: true)
 ```
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
-# Upgrade: Re-run profile setup scripts in upgrade mode
+# Upgrade: Re-run bundle setup scripts in upgrade mode
 # Safe to run repeatedly
 #
-# Usage: ./scripts/upgrade.sh [--profile <name>...]
+# Usage: ./scripts/upgrade.sh [--bundle <name>...]
 
 set -e
 
 DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 export DOTFILES_DIR
 
-PROFILES_FILE="$DOTFILES_DIR/.profiles"
+BUNDLES_FILE="$DOTFILES_DIR/.bundles"
 
 # ============================================================================
 # Detect OS
@@ -21,24 +21,24 @@ case "$OSTYPE" in
     *)       echo "Error: Unsupported OS: $OSTYPE"; exit 1 ;;
 esac
 
-PROFILES_DIR="$DOTFILES_DIR/platforms/$OS/profiles"
+BUNDLES_DIR="$DOTFILES_DIR/platforms/$OS/bundles"
 
-# Load shared library (provides get_profile_conf, is_profile_available, resolve_dependencies, sort_by_order)
+# Load shared library (provides get_bundle_conf, is_bundle_available, resolve_dependencies, sort_by_order)
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 # ============================================================================
 # Parse flags
 # ============================================================================
-PROFILES=()
+BUNDLES=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --profile=*)
-            PROFILES+=("${1#*=}")
+        --bundle=*)
+            BUNDLES+=("${1#*=}")
             shift
             ;;
-        --profile)
-            PROFILES+=("$2")
+        --bundle)
+            BUNDLES+=("$2")
             shift 2
             ;;
         *)
@@ -48,23 +48,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ============================================================================
-# Load saved profiles if none specified
+# Load saved bundles if none specified
 # ============================================================================
-if [[ ${#PROFILES[@]} -eq 0 ]]; then
-    if [[ -f "$PROFILES_FILE" ]]; then
-        mapfile -t PROFILES < "$PROFILES_FILE"
-        echo "Using saved profiles: ${PROFILES[*]}"
+if [[ ${#BUNDLES[@]} -eq 0 ]]; then
+    if [[ -f "$BUNDLES_FILE" ]]; then
+        BUNDLES=()
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -n "$line" ]] && BUNDLES+=("$line")
+        done < "$BUNDLES_FILE"
+        echo "Using saved bundles: ${BUNDLES[*]}"
     else
-        echo "Error: No profiles specified and no saved profiles found."
-        echo "Run './install.sh' first, or use: ./scripts/upgrade.sh --profile <name>"
+        echo "Error: No bundles specified and no saved bundles found."
+        echo "Run './install.sh' first, or use: ./scripts/upgrade.sh --bundle <name>"
         exit 1
     fi
 else
-    # Resolve dependencies for manually specified profiles
+    # Resolve dependencies for manually specified bundles
     echo "Resolving dependencies..."
-    RESOLVED_LIST=$(resolve_dependencies "${PROFILES[@]}") || exit 1
-    mapfile -t PROFILES < <(echo "$RESOLVED_LIST" | sort_by_order)
-    echo "Upgrade order: ${PROFILES[*]}"
+    RESOLVED_LIST=$(resolve_dependencies "${BUNDLES[@]}") || exit 1
+    BUNDLES=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && BUNDLES+=("$line")
+    done < <(echo "$RESOLVED_LIST" | sort_by_order)
+    echo "Upgrade order: ${BUNDLES[*]}"
 fi
 
 # ============================================================================
@@ -89,43 +95,50 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
 fi
 
 # ============================================================================
-# Run each profile's setup.sh in upgrade mode
+# Run each bundle's setup.sh in upgrade mode
 # ============================================================================
 echo ""
 echo "════════════════════════════════════════════════════════════"
-echo "  Running profile upgrades"
+echo "  Running bundle upgrades"
 echo "════════════════════════════════════════════════════════════"
 
-for profile in "${PROFILES[@]}"; do
-    PROFILE_DIR="$PROFILES_DIR/$profile"
-    SETUP_SCRIPT="$PROFILE_DIR/setup.sh"
+for bundle in "${BUNDLES[@]}"; do
+    BUNDLE_DIR="$BUNDLES_DIR/$bundle"
+    SETUP_SCRIPT="$BUNDLE_DIR/setup.sh"
 
-    if ! is_profile_available "$profile"; then
+    if ! is_bundle_available "$bundle"; then
         echo ""
-        echo "Skipping unavailable profile: $profile"
+        echo "Skipping unavailable bundle: $bundle"
         continue
     fi
 
     if [[ ! -f "$SETUP_SCRIPT" ]]; then
         echo ""
-        echo "Warning: No setup.sh found for profile '$profile', skipping..."
+        echo "Warning: No setup.sh found for bundle '$bundle', skipping..."
         continue
     fi
 
     echo ""
     echo "────────────────────────────────────────────────────────────"
-    echo "  Profile: $profile (upgrade)"
+    echo "  Bundle: $bundle (upgrade)"
     echo "────────────────────────────────────────────────────────────"
 
-    # Export useful variables for the profile script
+    # Export useful variables for the bundle script
     export DOTFILES_DIR
-    export PROFILE_DIR
-    export PROFILE_NAME="$profile"
+    export BUNDLE_DIR
+    export BUNDLE_NAME="$bundle"
     export DOTFILES_MODE="upgrade"
 
-    # Run the profile's setup script in upgrade mode
+    # Run the bundle's setup script in upgrade mode
     "$SETUP_SCRIPT" upgrade
 done
+
+# ============================================================================
+# Setup loaded/ symlinks for active bundles
+# ============================================================================
+echo ""
+echo "Setting up loaded/ symlinks..."
+setup_loaded_symlinks "${BUNDLES[@]}"
 
 echo ""
 echo "════════════════════════════════════════════════════════════"

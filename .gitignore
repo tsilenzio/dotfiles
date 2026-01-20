@@ -1,6 +1,9 @@
-# Machine-specific state (logs, snapshots, profile selection)
+# Machine-specific state (logs, snapshots, bundle selection)
 .state/
-.profiles
+.bundles
+
+# Loaded bundles symlink (points to .state/loaded/)
+loaded
 
 # Local testing cache (installers, Homebrew package cache)
 .cache/*

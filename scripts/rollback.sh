@@ -30,7 +30,10 @@ if [[ -z "$TARGET" ]]; then
     echo "Available rollback points:"
     echo ""
 
-    mapfile -t TAGS < <(git tag -l "pre-update/*" --sort=-creatordate)
+    TAGS=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && TAGS+=("$line")
+    done < <(git tag -l "pre-update/*" --sort=-creatordate)
 
     if [[ ${#TAGS[@]} -eq 0 ]]; then
         echo "No rollback points found."
@@ -46,7 +49,7 @@ if [[ -z "$TARGET" ]]; then
         SNAPSHOT_DIR="$SNAPSHOT_BASE/$TIMESTAMP"
         if [[ -d "$SNAPSHOT_DIR" ]]; then
             [[ -f "$SNAPSHOT_DIR/Brewfile" ]] && INDICATORS+=" [brew]"
-            [[ -f "$SNAPSHOT_DIR/profiles" ]] && INDICATORS+=" [profiles]"
+            [[ -f "$SNAPSHOT_DIR/bundles" ]] && INDICATORS+=" [bundles]"
         fi
         echo "  $((i+1))) $TIMESTAMP ($HASH)$INDICATORS"
     done

@@ -95,16 +95,16 @@ link_base_configs() {
     [[ -f "$config_dir/gnupg/gpg-agent.conf" ]] && safe_link "$config_dir/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
 }
 
-# Apply profile-specific config overrides
-# Usage: apply_config_overrides <profile_dir>
+# Apply bundle-specific config overrides
+# Usage: apply_config_overrides <bundle_dir>
 apply_config_overrides() {
-    local profile_dir="$1"
-    local config_dir="$profile_dir/config"
+    local bundle_dir="$1"
+    local config_dir="$bundle_dir/config"
 
     [[ ! -d "$config_dir" ]] && return 0
 
-    while IFS= read -r -d '' profile_file; do
-        local rel_path="${profile_file#"$config_dir"/}"
+    while IFS= read -r -d '' bundle_file; do
+        local rel_path="${bundle_file#"$config_dir"/}"
         local dest=""
 
         case "$rel_path" in
@@ -120,22 +120,22 @@ apply_config_overrides() {
             *)              continue ;;
         esac
 
-        safe_link "$profile_file" "$dest"
+        safe_link "$bundle_file" "$dest"
     done < <(find "$config_dir" -type f -print0 2>/dev/null)
 }
 
 # ============================================================================
-# Profile Management
+# Bundle Management
 # ============================================================================
-# These functions require PROFILES_DIR to be set before use
+# These functions require BUNDLES_DIR to be set before use
 
-# Get profile config value
-# Usage: get_profile_conf <profile_id> <key> [default]
-get_profile_conf() {
-    local profile_id="$1"
+# Get bundle config value
+# Usage: get_bundle_conf <bundle_id> <key> [default]
+get_bundle_conf() {
+    local bundle_id="$1"
     local key="$2"
     local default="${3:-}"
-    local conf_file="$PROFILES_DIR/$profile_id/profile.conf"
+    local conf_file="$BUNDLES_DIR/$bundle_id/bundle.conf"
     local value="$default"
 
     if [[ -f "$conf_file" ]]; then
@@ -153,57 +153,57 @@ get_profile_conf() {
     echo "$value"
 }
 
-# Check if profile exists and is enabled
-# Usage: is_profile_available <profile_id>
-is_profile_available() {
-    local profile_id="$1"
-    local profile_dir="$PROFILES_DIR/$profile_id"
+# Check if bundle exists and is enabled
+# Usage: is_bundle_available <bundle_id>
+is_bundle_available() {
+    local bundle_id="$1"
+    local bundle_dir="$BUNDLES_DIR/$bundle_id"
 
-    [[ ! -d "$profile_dir" ]] && return 1
+    [[ ! -d "$bundle_dir" ]] && return 1
 
     local enabled
-    enabled=$(get_profile_conf "$profile_id" "enabled" "true")
+    enabled=$(get_bundle_conf "$bundle_id" "enabled" "true")
     [[ "$enabled" == "false" ]] && return 1
 
     return 0
 }
 
-# Resolve dependencies for a list of profiles (recursive)
-# Usage: resolve_dependencies profile1 profile2 ...
-# Outputs: all profiles including dependencies, in dependency order
+# Resolve dependencies for a list of bundles (recursive)
+# Usage: resolve_dependencies bundle1 bundle2 ...
+# Outputs: all bundles including dependencies, in dependency order
 resolve_dependencies() {
-    local -a input_profiles=("$@")
+    local -a input_bundles=("$@")
     local -a resolved=()
     local -a seen=()
 
     # Recursive helper
     resolve_one() {
-        local profile="$1"
+        local bundle="$1"
 
         # Skip if already resolved
-        for p in "${resolved[@]}"; do
-            [[ "$p" == "$profile" ]] && return 0
+        for b in "${resolved[@]}"; do
+            [[ "$b" == "$bundle" ]] && return 0
         done
 
         # Check for circular dependency
-        for p in "${seen[@]}"; do
-            if [[ "$p" == "$profile" ]]; then
-                echo "Error: Circular dependency detected involving '$profile'" >&2
+        for b in "${seen[@]}"; do
+            if [[ "$b" == "$bundle" ]]; then
+                echo "Error: Circular dependency detected involving '$bundle'" >&2
                 return 1
             fi
         done
 
-        seen+=("$profile")
+        seen+=("$bundle")
 
-        # Verify profile exists
-        if ! is_profile_available "$profile"; then
-            echo "Error: Profile '$profile' not found or disabled" >&2
+        # Verify bundle exists
+        if ! is_bundle_available "$bundle"; then
+            echo "Error: Bundle '$bundle' not found or disabled" >&2
             return 1
         fi
 
         # Get and resolve dependencies first
         local requires
-        requires=$(get_profile_conf "$profile" "requires" "")
+        requires=$(get_bundle_conf "$bundle" "requires" "")
         if [[ -n "$requires" ]]; then
             IFS=',' read -ra deps <<< "$requires"
             for dep in "${deps[@]}"; do
@@ -212,64 +212,111 @@ resolve_dependencies() {
             done
         fi
 
-        # Add this profile after its dependencies
-        resolved+=("$profile")
+        # Add this bundle after its dependencies
+        resolved+=("$bundle")
     }
 
-    # Resolve each input profile
-    for profile in "${input_profiles[@]}"; do
-        resolve_one "$profile" || return 1
+    # Resolve each input bundle
+    for bundle in "${input_bundles[@]}"; do
+        resolve_one "$bundle" || return 1
     done
 
-    # Output resolved profiles
+    # Output resolved bundles
     printf '%s\n' "${resolved[@]}"
 }
 
-# Sort profiles by order
-# Usage: sort_by_order < profiles_list
+# Sort bundles by order
+# Usage: sort_by_order < bundles_list
 sort_by_order() {
-    local -a profiles=()
-    while IFS= read -r profile; do
-        [[ -n "$profile" ]] && profiles+=("$profile")
+    local -a bundles=()
+    while IFS= read -r bundle; do
+        [[ -n "$bundle" ]] && bundles+=("$bundle")
     done
 
-    # Build sortable list: order|profile_id
-    for profile in "${profiles[@]}"; do
+    # Build sortable list: order|bundle_id
+    for bundle in "${bundles[@]}"; do
         local order
-        order=$(get_profile_conf "$profile" "order" "50")
-        echo "$order|$profile"
+        order=$(get_bundle_conf "$bundle" "order" "50")
+        echo "$order|$bundle"
     done | sort -t'|' -k1 -n | cut -d'|' -f2
 }
 
-# Discover available profiles from directory structure
-# Returns: profile_id|name|description|order|requires (sorted by order)
-# Hidden profiles are excluded unless in SHOW_HIDDEN array
-# Requires: PROFILES_DIR, SHOW_HIDDEN (array, optional)
-discover_profiles() {
-    for profile_dir in "$PROFILES_DIR"/*/; do
-        [[ ! -d "$profile_dir" ]] && continue
-        local profile_id
-        profile_id=$(basename "$profile_dir")
+# Discover available bundles from directory structure
+# Returns: bundle_id|name|description|order|requires (sorted by order)
+# Hidden bundles are excluded unless in SHOW_HIDDEN array
+# Requires: BUNDLES_DIR, SHOW_HIDDEN (array, optional)
+discover_bundles() {
+    for bundle_dir in "$BUNDLES_DIR"/*/; do
+        [[ ! -d "$bundle_dir" ]] && continue
+        local bundle_id
+        bundle_id=$(basename "$bundle_dir")
 
         # Skip if not available (disabled, etc.)
-        is_profile_available "$profile_id" || continue
+        is_bundle_available "$bundle_id" || continue
 
-        # Skip hidden profiles unless explicitly shown via SHOW_HIDDEN
+        # Skip hidden bundles unless explicitly shown via SHOW_HIDDEN
         local hidden
-        hidden=$(get_profile_conf "$profile_id" "hidden" "false")
+        hidden=$(get_bundle_conf "$bundle_id" "hidden" "false")
         if [[ "$hidden" == "true" ]]; then
             # shellcheck disable=SC2076
-            [[ ! " ${SHOW_HIDDEN[*]} " =~ " $profile_id " ]] && continue
+            [[ ! " ${SHOW_HIDDEN[*]} " =~ " $bundle_id " ]] && continue
         fi
 
         local name description order requires
-        name=$(get_profile_conf "$profile_id" "name" "$profile_id")
-        description=$(get_profile_conf "$profile_id" "description" "")
-        order=$(get_profile_conf "$profile_id" "order" "50")
-        requires=$(get_profile_conf "$profile_id" "requires" "")
+        name=$(get_bundle_conf "$bundle_id" "name" "$bundle_id")
+        description=$(get_bundle_conf "$bundle_id" "description" "")
+        order=$(get_bundle_conf "$bundle_id" "order" "50")
+        requires=$(get_bundle_conf "$bundle_id" "requires" "")
 
-        echo "$profile_id|$name|$description|$order|$requires"
+        echo "$bundle_id|$name|$description|$order|$requires"
     done | sort -t'|' -k4 -n
+}
+
+# ============================================================================
+# Loaded Bundles Symlinks
+# ============================================================================
+
+# Setup the loaded/ directory with symlinks to active bundles
+# This enables glob-based auto-discovery: source "$DOTFILES_DIR/loaded/*/config/zsh/*.zsh"
+# Usage: setup_loaded_symlinks bundle1 bundle2 ...
+# Requires: DOTFILES_DIR, BUNDLES_DIR
+setup_loaded_symlinks() {
+    local -a bundles=("$@")
+    local state_loaded="$DOTFILES_DIR/.state/loaded"
+    local root_loaded="$DOTFILES_DIR/loaded"
+
+    # Create .state/loaded/ directory
+    mkdir -p "$state_loaded"
+
+    # Create ./loaded symlink to .state/loaded/ if needed
+    if [[ -L "$root_loaded" ]]; then
+        if [[ "$(readlink "$root_loaded")" != ".state/loaded" ]]; then
+            rm -f "$root_loaded"
+            ln -s ".state/loaded" "$root_loaded"
+        fi
+    elif [[ -e "$root_loaded" ]]; then
+        # Something else exists there, back it up
+        local backup
+        backup="${root_loaded}.backup.$(date +%Y%m%d-%H%M%S)"
+        mv "$root_loaded" "$backup"
+        echo "  ⚠ Backed up existing loaded/ → $backup"
+        ln -s ".state/loaded" "$root_loaded"
+    else
+        ln -s ".state/loaded" "$root_loaded"
+    fi
+
+    # Clear existing symlinks in loaded/
+    find "$state_loaded" -maxdepth 1 -type l -delete 2>/dev/null || true
+
+    # Create symlinks for each active bundle
+    for bundle in "${bundles[@]}"; do
+        local bundle_dir="$BUNDLES_DIR/$bundle"
+        if [[ -d "$bundle_dir" ]]; then
+            ln -sf "$bundle_dir" "$state_loaded/$bundle"
+        fi
+    done
+
+    echo "  ✓ loaded/ symlinks created for: ${bundles[*]}"
 }
 
 # ============================================================================

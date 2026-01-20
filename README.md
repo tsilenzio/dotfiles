@@ -1,15 +1,15 @@
 # Dotfiles
 
-Personal dotfiles for macOS with multi-profile support.
+Personal dotfiles for macOS with multi-bundle support.
 
 ## Quick Start
 
 ```bash
-# Fresh install (interactive profile selection)
+# Fresh install (interactive bundle selection)
 curl -fsSL https://raw.githubusercontent.com/tsilenzio/dotfiles/main/bootstrap.sh | bash
 
-# Non-interactive with specific profiles
-curl -fsSL https://... | bash -s -- --profile core --profile personal
+# Non-interactive with specific bundles
+curl -fsSL https://... | bash -s -- --bundle core --bundle personal
 ```
 
 Or manually:
@@ -23,17 +23,17 @@ git clone https://github.com/tsilenzio/dotfiles.git ~/.dotfiles
 
 - **Zsh** configuration with Starship prompt
 - **Git** config with delta diffs and GPG signing
-- **Homebrew** packages organized by profile
+- **Homebrew** packages organized by bundle
 - **macOS** preferences automation
 - **Dock** customization
 - **Secrets** management with age encryption
 
-## Profiles
+## Bundles
 
-Profiles are modular configurations with automatic dependency resolution:
+Bundles are modular configurations with automatic dependency resolution:
 
-| Profile | Description | Requires |
-|---------|-------------|----------|
+| Bundle | Description | Requires |
+|--------|-------------|----------|
 | `core` | Essential tools (zsh, git, CLI utilities) | - |
 | `develop` | Development tools, IDEs, containers | core |
 | `personal` | Gaming, entertainment, MS Office | core |
@@ -41,9 +41,9 @@ Profiles are modular configurations with automatic dependency resolution:
 | `test` | Minimal packages for VM testing (hidden) | - |
 
 **Example combinations:**
-- Personal machine: `--profile personal` (auto-includes core)
-- Work machine: `--profile work --profile develop` (auto-includes core)
-- Full setup: `--profile personal --profile work --profile develop`
+- Personal machine: `--bundle personal` (auto-includes core)
+- Work machine: `--bundle work --bundle develop` (auto-includes core)
+- Full setup: `--bundle personal --bundle work --bundle develop`
 
 ## Commands
 
@@ -52,7 +52,7 @@ This repo uses [just](https://github.com/casey/just) for common tasks:
 ```bash
 just                  # Show available commands
 just install          # Run full installation
-just upgrade          # Re-apply profiles (packages + symlinks)
+just upgrade          # Re-apply bundles (packages + symlinks)
 just update           # Pull latest changes (creates rollback point)
 just history          # Show available rollback points
 just rollback [id]    # Rollback to previous state
@@ -70,10 +70,10 @@ just secrets ...      # Secrets management (init, encrypt, decrypt)
 │   └── zsh/
 ├── platforms/
 │   └── macos/
-│       ├── profiles/          # Profile-specific setup
+│       ├── bundles/           # Bundle-specific setup
 │       │   ├── core/
 │       │   │   ├── Brewfile
-│       │   │   ├── profile.conf
+│       │   │   ├── bundle.conf
 │       │   │   └── setup.sh
 │       │   ├── develop/
 │       │   ├── personal/
@@ -88,23 +88,24 @@ just secrets ...      # Secrets management (init, encrypt, decrypt)
 │   ├── rollback.sh
 │   └── secrets.sh
 ├── secrets/                   # Encrypted secrets (age)
+├── loaded/                    # Symlinks to active bundles (for glob discovery)
 ├── bootstrap.sh
 └── install.sh
 ```
 
-## Adding a Profile
+## Adding a Bundle
 
-1. Create a new directory under `platforms/macos/profiles/`:
+1. Create a new directory under `platforms/macos/bundles/`:
 
 ```bash
-mkdir -p platforms/macos/profiles/myprofile
+mkdir -p platforms/macos/bundles/mybundle
 ```
 
-2. Add `profile.conf`:
+2. Add `bundle.conf`:
 
 ```bash
-name="My Profile"
-description="Description of this profile"
+name="My Bundle"
+description="Description of this bundle"
 order=30
 requires="core"  # Optional: comma-separated dependencies
 ```
@@ -126,13 +127,13 @@ MODE="${1:-install}"
 # Load shared library
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
-echo "Running myprofile setup ($MODE)..."
+echo "Running mybundle setup ($MODE)..."
 
 # Install Brewfile
-install_brewfile "$PROFILE_DIR/Brewfile"
+install_brewfile "$BUNDLE_DIR/Brewfile"
 
-# Apply config overrides (if profile has config/ directory)
-apply_config_overrides "$PROFILE_DIR"
+# Apply config overrides (if bundle has config/ directory)
+apply_config_overrides "$BUNDLE_DIR"
 
 # Add custom setup here
 ```
@@ -140,10 +141,10 @@ apply_config_overrides "$PROFILE_DIR"
 5. Make it executable:
 
 ```bash
-chmod +x platforms/macos/profiles/myprofile/setup.sh
+chmod +x platforms/macos/bundles/mybundle/setup.sh
 ```
 
-The profile will automatically appear in the selection menu.
+The bundle will automatically appear in the selection menu.
 
 ## Requirements
 

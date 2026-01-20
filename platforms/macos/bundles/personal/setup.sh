@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-# Personal profile setup
+# Personal bundle setup
 # Gaming, entertainment, and personal apps
 #
 # Environment variables available:
 #   DOTFILES_DIR   - Root dotfiles directory
-#   PROFILE_DIR    - This profile's directory
-#   PROFILE_NAME   - "personal"
+#   BUNDLE_DIR     - This bundle's directory
+#   BUNDLE_NAME    - "personal"
 #   DOTFILES_MODE  - "install" or "upgrade"
 
 set -e
@@ -21,15 +21,15 @@ echo "Installing personal packages..."
 # ============================================================================
 # Install Brewfile
 # ============================================================================
-install_brewfile "$PROFILE_DIR/Brewfile"
+install_brewfile "$BUNDLE_DIR/Brewfile"
 
 # ============================================================================
-# Profile-specific config overrides
+# Bundle-specific config overrides
 # ============================================================================
-if [[ -d "$PROFILE_DIR/config" ]]; then
+if [[ -d "$BUNDLE_DIR/config" ]]; then
     echo ""
     echo "Applying personal config overrides..."
-    apply_config_overrides "$PROFILE_DIR"
+    apply_config_overrides "$BUNDLE_DIR"
 fi
 
 # ============================================================================

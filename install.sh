@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Main installer: Sets up logging, detects OS, routes to platform installer
-# Usage: ./install.sh [--test] [--profile <name>...]
+# Usage: ./install.sh [--test] [--bundle <name>...]
 
 set -e
 

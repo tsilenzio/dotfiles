@@ -97,7 +97,7 @@ add_app "Spotify"
 add_app "Kindle"
 
 # =============================================================================
-# Phase 2: Profile-specific apps (handled via override files)
+# Phase 2: Bundle-specific apps (handled via override files)
 # =============================================================================
 # NOTE: This script includes Slack and Outlook for work environments
 # For personal environment, create internal/personal/scripts/dock.sh without them

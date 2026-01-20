@@ -43,9 +43,9 @@ if command -v brew &>/dev/null; then
     brew bundle dump --file="$SNAPSHOT_DIR/Brewfile" --force
 fi
 
-# Snapshot current profiles (if exists)
-if [[ -f "$DOTFILES_DIR/.profiles" ]]; then
-    cp "$DOTFILES_DIR/.profiles" "$SNAPSHOT_DIR/profiles"
+# Snapshot current bundles (if exists)
+if [[ -f "$DOTFILES_DIR/.bundles" ]]; then
+    cp "$DOTFILES_DIR/.bundles" "$SNAPSHOT_DIR/bundles"
 fi
 
 # Create metadata

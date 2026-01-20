@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-# Test profile setup
+# Test bundle setup
 # Minimal packages for VM testing
 #
 # Environment variables available:
 #   DOTFILES_DIR   - Root dotfiles directory
-#   PROFILE_DIR    - This profile's directory
-#   PROFILE_NAME   - "test"
+#   BUNDLE_DIR     - This bundle's directory
+#   BUNDLE_NAME    - "test"
 #   DOTFILES_MODE  - "install" or "upgrade"
 
 set -e
@@ -22,7 +22,7 @@ echo "Installing test packages (minimal set)..."
 # ============================================================================
 # Install Brewfile
 # ============================================================================
-install_brewfile "$PROFILE_DIR/Brewfile"
+install_brewfile "$BUNDLE_DIR/Brewfile"
 
 # ============================================================================
 # Minimal symlinks for testing
