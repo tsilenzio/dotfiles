@@ -21,10 +21,10 @@ just dev bootstrap    # Run bootstrap in test mode
 curl -fsSL https://raw.githubusercontent.com/tsilenzio/dotfiles/main/bootstrap.sh | bash
 
 # Non-interactive with specific bundles
-curl -fsSL https://... | bash -s -- --bundle core --bundle personal
+curl -fsSL https://... | bash -s -- --select core --select personal
 
-# Show hidden test bundle in menu
-curl -fsSL https://... | bash -s -- --with-hidden test
+# Reveal hidden test bundle in menu
+curl -fsSL https://... | bash -s -- --reveal test
 ```
 
 ### Testing curl|bash Locally
@@ -35,11 +35,11 @@ To test the piped install behavior:
 # Mimics: curl ... | bash
 cat bootstrap.sh | bash
 
-# Mimics: curl ... | bash -s -- --bundle core --bundle work
-cat bootstrap.sh | bash -s -- --bundle core --bundle work
+# Mimics: curl ... | bash -s -- --select core --select work
+cat bootstrap.sh | bash -s -- --select core --select work
 
-# Mimics: curl ... | bash -s -- --with-hidden test
-cat bootstrap.sh | bash -s -- --with-hidden test
+# Mimics: curl ... | bash -s -- --reveal test
+cat bootstrap.sh | bash -s -- --reveal test
 ```
 
 This triggers the "running from curl pipe" code path rather than the local copy path. Useful for testing that `/dev/tty` prompts work correctly when stdin is a pipe.
@@ -56,9 +56,9 @@ This triggers the "running from curl pipe" code path rather than the local copy 
 just dev              # Show available dev commands
 just dev setup        # Install CLT + Homebrew from cached installers
 just dev prefetch     # Pre-fetch packages (see bundles below)
-just dev bootstrap    # Run bootstrap.sh with --with-hidden test (shows test bundle)
+just dev bootstrap    # Run bootstrap.sh with --reveal test (shows test bundle)
 just dev bootstrap curl  # Emulate curl|bash behavior
-just dev install      # Run install.sh with --with-hidden test (shows test bundle)
+just dev install      # Run install.sh with --reveal test (shows test bundle)
 just dev lint         # Run shellcheck + zsh syntax checks
 ```
 
@@ -73,7 +73,7 @@ just dev prefetch personal     # Core + personal packages
 just dev prefetch all          # All bundles
 ```
 
-The `--with-hidden test` flag shows the hidden "Test" bundle in the menu for quick VM testing.
+The `--reveal test` flag shows the hidden "Test" bundle in the menu for quick VM testing.
 
 ## Testing Workflow
 
@@ -131,7 +131,7 @@ name="Display Name"
 description="What this bundle includes"
 order=10              # Lower = earlier in list and execution order
 requires="core"       # Comma-separated dependencies (resolved automatically)
-hidden=true           # Hide from menu, use --bundle <name> directly (default: false)
+hidden=true           # Hide from menu, use --reveal <name> to show (default: false)
 enabled=false         # Disable entirely, skip during upgrades (default: true)
 ```
 

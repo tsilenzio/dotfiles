@@ -243,8 +243,8 @@ sort_by_order() {
 
 # Discover available bundles from directory structure
 # Returns: bundle_id|name|description|order|requires (sorted by order)
-# Hidden bundles are excluded unless in SHOW_HIDDEN array
-# Requires: BUNDLES_DIR, SHOW_HIDDEN (array, optional)
+# Hidden bundles are excluded unless in REVEALED array
+# Requires: BUNDLES_DIR, REVEALED (array, optional)
 discover_bundles() {
     for bundle_dir in "$BUNDLES_DIR"/*/; do
         [[ ! -d "$bundle_dir" ]] && continue
@@ -254,12 +254,12 @@ discover_bundles() {
         # Skip if not available (disabled, etc.)
         is_bundle_available "$bundle_id" || continue
 
-        # Skip hidden bundles unless explicitly shown via SHOW_HIDDEN
+        # Skip hidden bundles unless explicitly revealed via REVEALED array
         local hidden
         hidden=$(get_bundle_conf "$bundle_id" "hidden" "false")
         if [[ "$hidden" == "true" ]]; then
             # shellcheck disable=SC2076
-            [[ ! " ${SHOW_HIDDEN[*]} " =~ " $bundle_id " ]] && continue
+            [[ ! " ${REVEALED[*]} " =~ " $bundle_id " ]] && continue
         fi
 
         local name description order requires

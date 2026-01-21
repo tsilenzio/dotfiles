@@ -9,7 +9,7 @@ Personal dotfiles for macOS with multi-bundle support.
 curl -fsSL https://raw.githubusercontent.com/tsilenzio/dotfiles/main/bootstrap.sh | bash
 
 # Non-interactive with specific bundles
-curl -fsSL https://... | bash -s -- --bundle core --bundle personal
+curl -fsSL https://... | bash -s -- --select core --select personal
 ```
 
 Or manually:
@@ -41,9 +41,9 @@ Bundles are modular configurations with automatic dependency resolution:
 | `test` | Minimal packages for VM testing (hidden) | - |
 
 **Example combinations:**
-- Personal machine: `--bundle personal` (auto-includes core)
-- Work machine: `--bundle work --bundle develop` (auto-includes core)
-- Full setup: `--bundle personal --bundle work --bundle develop`
+- Personal machine: `--select personal` (auto-includes core)
+- Work machine: `--select work --select develop` (auto-includes core)
+- Full setup: `--select personal --select work --select develop`
 
 ## Commands
 

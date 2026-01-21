@@ -10,7 +10,7 @@ brew "zsh"
 # GPG signing (used in gitconfig)
 brew "gnupg"
 brew "pinentry-mac"
-brew "pinentry-touchid"
+brew "jorgelbg/tap/pinentry-touchid"
 
 # Secrets management
 brew "age"
