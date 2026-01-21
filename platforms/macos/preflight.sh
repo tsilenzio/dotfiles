@@ -35,8 +35,11 @@ echo "Requesting permissions (approve these prompts to continue)..."
 sudo -v
 
 # Trigger /etc/pam.d/ access dialog (for Touch ID sudo setup later)
-# This specifically targets pam.d since that's what triggers the "administer" dialog
-sudo touch /etc/pam.d/.dotfiles-preflight && sudo rm -f /etc/pam.d/.dotfiles-preflight
+# Touch the actual target file to grant permission for later write
+SUDO_LOCAL="/etc/pam.d/sudo_local"
+if [[ ! -f "$SUDO_LOCAL" ]]; then
+    sudo touch "$SUDO_LOCAL"
+fi
 
 # Trigger "System Events" access prompt
 echo "  Requesting System Events access..."

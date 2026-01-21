@@ -24,15 +24,15 @@ bootstrap mode="local" *args:
     set -e
     cd "{{DOTFILES_DIR}}"
     if [[ "{{mode}}" == "curl" ]]; then
-        echo "Emulating: curl ... | bash -s -- --with-hidden test {{args}}"
-        cat bootstrap.sh | bash -s -- --with-hidden test {{args}}
+        echo "Emulating: curl ... | bash -s -- --reveal test {{args}}"
+        cat bootstrap.sh | bash -s -- --reveal test {{args}}
     else
-        ./bootstrap.sh --with-hidden test {{args}}
+        ./bootstrap.sh --reveal test {{args}}
     fi
 
 # Run install with test bundle visible
 install:
-    "{{DOTFILES_DIR}}/install.sh" --with-hidden test
+    "{{DOTFILES_DIR}}/install.sh" --reveal test
 
 # Run linters (shellcheck + zsh syntax)
 lint:

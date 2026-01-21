@@ -21,24 +21,24 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 # Parse flags
 # ============================================================================
 BUNDLES=()
-SHOW_HIDDEN=()
+REVEALED=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --bundle=*)
+        --select=*)
             BUNDLES+=("${1#*=}")
             shift
             ;;
-        --bundle)
+        --select)
             BUNDLES+=("$2")
             shift 2
             ;;
-        --with-hidden=*)
-            SHOW_HIDDEN+=("${1#*=}")
+        --reveal=*)
+            REVEALED+=("${1#*=}")
             shift
             ;;
-        --with-hidden)
-            SHOW_HIDDEN+=("$2")
+        --reveal)
+            REVEALED+=("$2")
             shift 2
             ;;
         *)

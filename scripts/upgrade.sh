@@ -3,7 +3,7 @@
 # Upgrade: Re-run bundle setup scripts in upgrade mode
 # Safe to run repeatedly
 #
-# Usage: ./scripts/upgrade.sh [--bundle <name>...]
+# Usage: ./scripts/upgrade.sh [--select <name>...]
 
 set -e
 
@@ -33,11 +33,11 @@ BUNDLES=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --bundle=*)
+        --select=*)
             BUNDLES+=("${1#*=}")
             shift
             ;;
-        --bundle)
+        --select)
             BUNDLES+=("$2")
             shift 2
             ;;
@@ -59,7 +59,7 @@ if [[ ${#BUNDLES[@]} -eq 0 ]]; then
         echo "Using saved bundles: ${BUNDLES[*]}"
     else
         echo "Error: No bundles specified and no saved bundles found."
-        echo "Run './install.sh' first, or use: ./scripts/upgrade.sh --bundle <name>"
+        echo "Run './install.sh' first, or use: ./scripts/upgrade.sh --select <name>"
         exit 1
     fi
 else
