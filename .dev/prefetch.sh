@@ -44,6 +44,9 @@ if ! command -v brew &>/dev/null; then
     fi
 fi
 
+# Disable auto-update during prefetch (speeds up operations significantly)
+export HOMEBREW_NO_AUTO_UPDATE=1
+
 # ============================================================================
 # Determine which Brewfiles to use
 # ============================================================================
@@ -65,6 +68,7 @@ for bundle in "${BUNDLES[@]}"; do
         all)
             # Add all bundle Brewfiles
             for bundle_dir in "$BUNDLES_DIR"/*/; do
+                bundle_dir="${bundle_dir%/}"
                 bf="$bundle_dir/Brewfile"
                 [[ -f "$bf" ]] && BREWFILES+=("$bf")
             done
@@ -130,8 +134,12 @@ TAPS=$(echo "$TAPS" | grep -v '^$' | sort -u)
 if [[ -n "$TAPS" ]]; then
     log "Adding taps..."
     for tap in $TAPS; do
-        info "  Tapping: $tap"
-        brew tap "$tap" 2>/dev/null || warn "Failed to tap: $tap"
+        if brew tap | grep -q "^$tap\$"; then
+            info "  Already tapped: $tap"
+        else
+            info "  Tapping: $tap"
+            brew tap "$tap" || warn "Failed to tap: $tap"
+        fi
     done
 fi
 

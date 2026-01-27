@@ -54,6 +54,15 @@ fi
 [[ -f "$HOME/.dart-cli-completion/zsh-config.zsh" ]] && source "$HOME/.dart-cli-completion/zsh-config.zsh"
 
 # ============================================================================
+# Functions
+# ============================================================================
+srun() {
+    local secrets
+    secrets=$("$DOTFILES_DIR/scripts/secrets.sh" env --inline) || return 1
+    env $secrets "$@"
+}
+
+# ============================================================================
 # Aliases
 # ============================================================================
 alias vim="nvim"

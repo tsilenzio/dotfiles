@@ -1,3 +1,10 @@
+# Dotfiles location (resolved from zshrc symlink)
+if [[ -L ~/.zshrc ]]; then
+    export DOTFILES_DIR="$(cd "$(dirname "$(readlink ~/.zshrc)")/../.." && pwd)"
+else
+    export DOTFILES_DIR="$HOME/.dotfiles"
+fi
+
 # Setup homebrew & mise
 if [[ ! -o interactive ]] && [[ ! -o login ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
