@@ -10,6 +10,9 @@ DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
 CACHE_DIR="$DOTFILES_DIR/.cache"
 PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
 
+# Disable auto-update for any brew commands after installation
+export HOMEBREW_NO_AUTO_UPDATE=1
+
 # Run preflight (sets up sudo, triggers permission dialogs)
 if [[ -f "$PLATFORM_DIR/preflight.sh" ]]; then
     source "$PLATFORM_DIR/preflight.sh"

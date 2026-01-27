@@ -12,15 +12,15 @@ default:
 
 # Initialize age encryption + Keychain
 init:
-    {{SECRETS_SCRIPT}} init
+    "{{SECRETS_SCRIPT}}" init
 
 # Check secrets setup status
 status:
-    {{SECRETS_SCRIPT}} status
+    "{{SECRETS_SCRIPT}}" status
 
 # List all encrypted secrets
 list:
-    {{SECRETS_SCRIPT}} list
+    "{{SECRETS_SCRIPT}}" list
 
 # Restore secrets from encrypted storage
 [doc("Restore encrypted secrets. Use --ssh and/or --gpg, or neither for all.")]
@@ -125,15 +125,15 @@ backup ssh="" gpg="":
 
 # Encrypt a specific file
 encrypt file:
-    {{SECRETS_SCRIPT}} encrypt-raw "{{file}}"
+    "{{SECRETS_SCRIPT}}" encrypt-raw "{{file}}"
 
 # Decrypt a specific file
 decrypt file output="":
-    {{SECRETS_SCRIPT}} decrypt-raw "{{file}}" "{{output}}"
+    "{{SECRETS_SCRIPT}}" decrypt-raw "{{file}}" "{{output}}"
 
 # Edit an encrypted SOPS file
 edit file:
-    {{SECRETS_SCRIPT}} edit "{{file}}"
+    "{{SECRETS_SCRIPT}}" edit "{{file}}"
 
 # Reset secrets (delete all and remove Keychain entry)
 [doc("Wipe all secrets and start fresh. Requires --force to confirm.")]

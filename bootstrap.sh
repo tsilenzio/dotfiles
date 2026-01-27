@@ -56,6 +56,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 TARGET_DIR="${TARGET_DIR:-${DOTFILES_TARGET:-$HOME/.dotfiles}}"
+TARGET_DIR="${TARGET_DIR%/}"  # Normalize: remove trailing slash
 REPO_URL="https://github.com/tsilenzio/dotfiles.git"
 TARBALL_URL="https://github.com/tsilenzio/dotfiles/archive/refs/heads/main.tar.gz"
 

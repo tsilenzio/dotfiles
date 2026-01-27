@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Secrets Initialization Script
-# Sets up age encryption with Keychain integration for Touch ID access
+# Sets up age encryption with macOS Keychain integration
 #
 # Supports two modes:
 # 1. Bootstrap (new machine): Encrypted key exists → decrypt with password
@@ -9,9 +9,9 @@
 
 set -e
 
-# Auto-detect dotfiles directory from script location
+# Dotfiles directory is always relative to this script's location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOTFILES_DIR="${DOTFILES_DIR:-$(dirname "$SCRIPT_DIR")}"
+DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
 SECRETS_DIR="$DOTFILES_DIR/secrets"
 AGE_KEY_FILE="$SECRETS_DIR/keys.txt"
 AGE_KEY_ENCRYPTED="$SECRETS_DIR/keys.txt.age"
@@ -42,8 +42,8 @@ check_deps() {
 # Get password from user and store in Keychain
 setup_keychain() {
     if security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" &> /dev/null; then
-        log "Age password already in Keychain (Touch ID enabled)"
-        read -p "Use existing Keychain password? (Y/n) " -n 1 -r
+        log "Age password already in Keychain"
+        read -p "Use existing Keychain password? (Y/n) " -n 1 -r < /dev/tty
         echo
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             return 0
@@ -51,7 +51,7 @@ setup_keychain() {
         security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" &> /dev/null || true
     fi
 
-    log "Storing age password in Keychain for Touch ID access..."
+    log "Storing age password in Keychain..."
     echo ""
     echo "┌────────────────────────────────────────────────────────────┐"
     echo "│  AGE ENCRYPTION PASSWORD                                  │"
@@ -59,7 +59,7 @@ setup_keychain() {
     echo "│  (This encrypts your age key for safe git storage)        │"
     echo "└────────────────────────────────────────────────────────────┘"
     echo ""
-    read -r -s -p "Age password: " AGE_PASSWORD
+    read -r -s -p "Age password: " AGE_PASSWORD < /dev/tty
     echo
 
     if [[ -z "$AGE_PASSWORD" ]]; then
@@ -70,9 +70,9 @@ setup_keychain() {
     security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w "$AGE_PASSWORD" -T ""
     log "Password stored in Keychain"
     echo ""
-    info "NOTE: macOS will show a Keychain access dialog."
-    info "Enter your macOS login password and click 'Always Allow'"
-    info "to enable Touch ID for future access."
+    info "NOTE: macOS may show a Keychain access dialog."
+    info "Click 'Always Allow' to enable quick access for future operations."
+    info "(Uses Touch ID if available, otherwise macOS login password)"
     echo ""
 }
 
@@ -106,6 +106,10 @@ EXPECT_EOF
     AGE_PUBLIC_KEY=$(grep "public key:" "$AGE_KEY_FILE" | sed 's/.*: //')
     log "Age key restored successfully"
     log "Public key: $AGE_PUBLIC_KEY"
+
+    # Delete unencrypted key - it will be decrypted on-demand when needed
+    rm -f "$AGE_KEY_FILE"
+    log "Cleaned up temporary key file (will decrypt on-demand)"
 }
 
 # Fresh setup mode: Generate new age key
@@ -174,6 +178,10 @@ keys.txt
 # Encrypted identity IS safe to commit
 !keys.txt.age
 EOF
+
+    # Delete unencrypted key - it will be decrypted on-demand when needed
+    rm -f "$AGE_KEY_FILE"
+    log "Cleaned up temporary key file (will decrypt on-demand)"
 }
 
 # Main logic
@@ -183,28 +191,41 @@ main() {
 
     # Determine mode
     if [[ -f "$AGE_KEY_FILE" ]]; then
-        # Already have unencrypted key
+        # Already have unencrypted key - need to clean up
         warn "Age key already exists at $AGE_KEY_FILE"
 
         if [[ ! -f "$AGE_KEY_ENCRYPTED" ]]; then
             warn "Encrypted key backup not found"
-            read -p "Create encrypted backup now? (Y/n) " -n 1 -r
+            read -p "Create encrypted backup now? (Y/n) " -n 1 -r < /dev/tty
             echo
             if [[ ! $REPLY =~ ^[Nn]$ ]]; then
                 setup_keychain
                 local password
                 password=$(get_password)
-                age -p -o "$AGE_KEY_ENCRYPTED" "$AGE_KEY_FILE" <<< "$password"
+                expect << EXPECT_EOF
+spawn age -p -o "$AGE_KEY_ENCRYPTED" "$AGE_KEY_FILE"
+expect "Enter passphrase"
+send "$password\r"
+expect "Confirm passphrase"
+send "$password\r"
+expect eof
+EXPECT_EOF
                 log "Encrypted key saved to: $AGE_KEY_ENCRYPTED"
             fi
         fi
 
-        read -p "Reinitialize? This will overwrite the existing key! (y/N) " -n 1 -r
+        read -p "Reinitialize? This will overwrite the existing key! (y/N) " -n 1 -r < /dev/tty
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             # Just ensure Keychain is set up
             setup_keychain
-            log "Keychain configured. Existing key unchanged."
+            # Clean up the unencrypted key if we have an encrypted backup
+            if [[ -f "$AGE_KEY_ENCRYPTED" ]]; then
+                AGE_PUBLIC_KEY=$(grep "public key:" "$AGE_KEY_FILE" | sed 's/.*: //')
+                rm -f "$AGE_KEY_FILE"
+                log "Cleaned up unencrypted key (will decrypt on-demand)"
+            fi
+            log "Keychain configured."
             exit 0
         fi
         fresh_setup_mode
@@ -223,12 +244,13 @@ main() {
     echo "Secrets initialization complete!"
     echo "========================================"
     echo ""
-    echo "Age key:      $AGE_KEY_FILE (local only, gitignored)"
-    echo "Encrypted:    $AGE_KEY_ENCRYPTED (safe to commit)"
-    echo "Public key:   $AGE_PUBLIC_KEY"
-    echo "SOPS config:  $SOPS_CONFIG"
+    echo "Encrypted key: $AGE_KEY_ENCRYPTED (safe to commit)"
+    echo "Public key:    $AGE_PUBLIC_KEY"
+    echo "SOPS config:   $SOPS_CONFIG"
     echo ""
-    echo "Touch ID is now enabled for accessing secrets!"
+    echo "The private key is decrypted on-demand via Keychain."
+    echo "(Touch ID if available, otherwise macOS login password)"
+    echo "It never persists on disk after operations complete."
     echo ""
     echo "Next steps:"
     echo "  Backup all keys:  just secrets backup"

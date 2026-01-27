@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 
 # Secrets Management Script
-# Encrypt, decrypt, and edit secrets using age/SOPS with Touch ID
+# Encrypt, decrypt, and edit secrets using age/SOPS with Keychain
 
 set -e
 
-# Auto-detect dotfiles directory from script location
+# Dotfiles directory is always relative to this script's location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOTFILES_DIR="${DOTFILES_DIR:-$(dirname "$SCRIPT_DIR")}"
+DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
 SECRETS_DIR="$DOTFILES_DIR/secrets"
-AGE_KEY_FILE="$SECRETS_DIR/keys.txt"
+AGE_KEY_ENCRYPTED="$SECRETS_DIR/keys.txt.age"
+SOPS_CONFIG="$DOTFILES_DIR/.sops.yaml"
 KEYCHAIN_SERVICE="dotfiles-age"
 KEYCHAIN_ACCOUNT="age-encryption-key"
+TEMP_KEY_FILE=""
+
+cleanup_key() {
+    [[ -n "$TEMP_KEY_FILE" && -f "$TEMP_KEY_FILE" ]] && rm -f "$TEMP_KEY_FILE"
+}
+trap cleanup_key EXIT
 
 # Colors
 GREEN='\033[0;32m'
@@ -42,6 +49,9 @@ Commands:
   list                    List encrypted secrets
   status                  Check secrets setup status
 
+  env [file]              Output decrypted env vars (default: secrets/env.age)
+    --inline              Output as KEY=val KEY2=val2 (for use with env command)
+
 Options:
   -o, --output <file>     Output file (for encrypt/decrypt)
   -h, --help              Show this help
@@ -58,17 +68,51 @@ EOF
 }
 
 check_initialized() {
-    if [[ ! -f "$AGE_KEY_FILE" ]]; then
+    if [[ ! -f "$AGE_KEY_ENCRYPTED" ]]; then
         error "Secrets not initialized. Run: $0 init"
     fi
 }
 
-get_age_key() {
+unlock_key() {
+    [[ -n "$TEMP_KEY_FILE" && -f "$TEMP_KEY_FILE" ]] && return 0
     check_initialized
-    export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
+
+    local password
+    password=$(get_password)
+
+    TEMP_KEY_FILE=$(mktemp)
+    chmod 600 "$TEMP_KEY_FILE"
+
+    if ! expect -c "
+        log_user 0
+        spawn age -d -o \"$TEMP_KEY_FILE\" \"$AGE_KEY_ENCRYPTED\"
+        expect \"Enter passphrase:\"
+        send \"$password\r\"
+        expect eof
+        catch wait result
+        exit [lindex \$result 3]
+    " > /dev/null 2>&1; then
+        rm -f "$TEMP_KEY_FILE"
+        TEMP_KEY_FILE=""
+        error "Failed to decrypt key. Check your Keychain password."
+    fi
 }
 
-# Get password from Keychain (triggers Touch ID)
+get_age_key() {
+    unlock_key
+    export SOPS_AGE_KEY_FILE="$TEMP_KEY_FILE"
+}
+
+get_public_key() {
+    if [[ -f "$SOPS_CONFIG" ]]; then
+        grep -oE 'age1[a-z0-9]+' "$SOPS_CONFIG" | head -1
+    else
+        unlock_key
+        grep "public key:" "$TEMP_KEY_FILE" | sed 's/.*: //'
+    fi
+}
+
+# Get password from Keychain (authenticates via Touch ID or macOS password)
 get_password() {
     security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null || \
         error "Password not found in Keychain. Run: $0 init"
@@ -152,9 +196,9 @@ cmd_encrypt_raw() {
         fi
     fi
 
-    # Get public key from age key file
     local public_key
-    public_key=$(grep "public key:" "$AGE_KEY_FILE" | sed 's/.*: //')
+    public_key=$(get_public_key)
+    [[ -z "$public_key" ]] && error "Could not determine public key"
 
     mkdir -p "$(dirname "$output")"
     log "Encrypting $input with age..."
@@ -171,10 +215,10 @@ cmd_decrypt_raw() {
     [[ -z "$input" ]] && error "No input file specified"
     [[ -f "$input" ]] || error "File not found: $input"
 
-    check_initialized
+    unlock_key
 
     log "Decrypting $input with age..."
-    age -d -i "$AGE_KEY_FILE" -o "$output" "$input"
+    age -d -i "$TEMP_KEY_FILE" -o "$output" "$input"
     chmod 600 "$output"
     log "Decrypted: $output"
 }
@@ -186,29 +230,58 @@ cmd_list() {
     done
 }
 
+cmd_env() {
+    local inline=false
+    local env_file="$SECRETS_DIR/env.age"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --inline) inline=true; shift ;;
+            *) env_file="$1"; shift ;;
+        esac
+    done
+
+    [[ -f "$env_file" ]] || error "Environment file not found: $env_file (create with: secrets encrypt-raw your-env-file)"
+
+    unlock_key
+
+    local content
+    content=$(age -d -i "$TEMP_KEY_FILE" "$env_file")
+
+    if [[ "$inline" == true ]]; then
+        echo "$content" | grep -v '^#' | grep -v '^$' | grep '=' | tr '\n' ' '
+    else
+        echo "$content" | grep -v '^#' | grep -v '^$' | grep '=' | while read -r line; do
+            echo "export $line"
+        done
+    fi
+}
+
 cmd_status() {
     echo "Secrets Status"
     echo "=============="
     echo ""
 
-    if [[ -f "$AGE_KEY_FILE" ]]; then
-        echo "Age key: OK ($AGE_KEY_FILE)"
+    if [[ -f "$AGE_KEY_ENCRYPTED" ]]; then
+        echo "Age key: OK ($AGE_KEY_ENCRYPTED)"
         local public_key
-        public_key=$(grep "public key:" "$AGE_KEY_FILE" | sed 's/.*: //')
-        echo "Public key: $public_key"
+        public_key=$(get_public_key 2>/dev/null || echo "")
+        if [[ -n "$public_key" ]]; then
+            echo "Public key: $public_key"
+        fi
     else
         echo "Age key: NOT FOUND"
     fi
 
     echo ""
     if security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" &> /dev/null; then
-        echo "Keychain: OK (Touch ID enabled)"
+        echo "Keychain: OK (password stored)"
     else
         echo "Keychain: NOT CONFIGURED"
     fi
 
     echo ""
-    if [[ -f "$DOTFILES_DIR/.sops.yaml" ]]; then
+    if [[ -f "$SOPS_CONFIG" ]]; then
         echo "SOPS config: OK"
     else
         echo "SOPS config: NOT FOUND"
@@ -267,6 +340,9 @@ case "$command" in
         ;;
     status)
         cmd_status
+        ;;
+    env)
+        cmd_env "$@"
         ;;
     -h|--help|help)
         usage
