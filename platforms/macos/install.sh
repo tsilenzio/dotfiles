@@ -17,9 +17,7 @@ BUNDLES_FILE="$DOTFILES_DIR/.bundles"
 # Load shared library (provides get_bundle_conf, is_bundle_available, resolve_dependencies, sort_by_order)
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
-# ============================================================================
-# Parse flags
-# ============================================================================
+## Parse flags
 BUNDLES=()
 REVEALED=()
 
@@ -47,9 +45,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ============================================================================
-# Determine install vs upgrade mode
-# ============================================================================
+## Determine install vs upgrade mode
 if [[ -f "$BUNDLES_FILE" ]]; then
     MODE="upgrade"
 else
@@ -58,9 +54,7 @@ fi
 
 echo "Mode: $MODE"
 
-# ============================================================================
-# Bundle selection (if not provided via flags)
-# ============================================================================
+## Bundle selection (if not provided via flags)
 if [[ ${#BUNDLES[@]} -eq 0 ]]; then
     if [[ "$MODE" == "upgrade" && -f "$BUNDLES_FILE" ]]; then
         # Upgrade mode - use saved bundles
@@ -121,9 +115,7 @@ if [[ ${#BUNDLES[@]} -eq 0 ]]; then
     fi
 fi
 
-# ============================================================================
-# Resolve dependencies and sort by order
-# ============================================================================
+## Resolve dependencies and sort by order
 echo ""
 echo "Resolving dependencies..."
 
@@ -138,17 +130,13 @@ echo "Installation order: ${RESOLVED_BUNDLES[*]}"
 # Save resolved bundles for future upgrades
 printf '%s\n' "${RESOLVED_BUNDLES[@]}" > "$BUNDLES_FILE"
 
-# ============================================================================
-# Preflight: Request permissions and setup temporary sudo
-# ============================================================================
+## Preflight: Request permissions and setup temporary sudo
 if [[ -f "$PLATFORM_DIR/preflight.sh" ]]; then
     source "$PLATFORM_DIR/preflight.sh"
     trap preflight_cleanup EXIT
 fi
 
-# ============================================================================
-# Install Homebrew (if not present)
-# ============================================================================
+## Install Homebrew (if not present)
 BREW_BIN=""
 if command -v brew &>/dev/null; then
     BREW_BIN="$(command -v brew)"
@@ -182,9 +170,7 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
-# ============================================================================
-# Run each bundle's setup.sh
-# ============================================================================
+## Run each bundle's setup.sh
 echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  Running bundle setup scripts"
@@ -215,16 +201,12 @@ for bundle in "${RESOLVED_BUNDLES[@]}"; do
     "$SETUP_SCRIPT" "$MODE"
 done
 
-# ============================================================================
-# Setup loaded/ symlinks for active bundles
-# ============================================================================
+## Setup loaded/ symlinks for active bundles
 echo ""
 echo "Setting up loaded/ symlinks..."
 setup_loaded_symlinks "${RESOLVED_BUNDLES[@]}"
 
-# ============================================================================
-# Post-install system configuration
-# ============================================================================
+## Post-install system configuration
 echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  System configuration"

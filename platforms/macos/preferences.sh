@@ -31,9 +31,7 @@ if [[ "${macos_version%%.*}" -ne 26 ]]; then
     warn "This script was written for macOS 26.x (Tahoe) and has not been tested on other versions."
 fi
 
-# =============================================================================
-# BATTERY & POWER
-# =============================================================================
+## Battery & Power
 log "Configuring battery and power settings..."
 
 # Set system to high efficiency mode on power adapter
@@ -50,9 +48,7 @@ sudo pmset -b powermode 0
 sudo pmset -b womp 0
 sudo pmset -b disksleep 10
 
-# =============================================================================
-# APPEARANCE (Liquid Glass Design in macOS 26 Tahoe)
-# =============================================================================
+## Appearance (Liquid Glass Design in macOS 26 Tahoe)
 log "Configuring appearance..."
 
 # Set dark mode
@@ -73,9 +69,7 @@ defaults write NSGlobalDomain AppleInterfaceIconStyle -int 1
 # Uncomment if needed:
 # defaults write com.apple.universalaccess reduceTransparency -bool true
 
-# =============================================================================
-# CONTROL CENTER (Redesigned in macOS 26 Tahoe)
-# =============================================================================
+## Control Center (Redesigned in macOS 26 Tahoe)
 log "Configuring Control Center..."
 
 # Show battery percentage in menu bar
@@ -96,9 +90,7 @@ defaults write com.apple.controlcenter WiFi -int 18
 # Show Bluetooth in menu bar
 defaults write com.apple.controlcenter Bluetooth -int 18
 
-# =============================================================================
-# DOCK AND DESKTOP
-# =============================================================================
+## Dock and Desktop
 log "Configuring Dock and Desktop..."
 
 # Double-click window title bar to fill (Maximize in Tahoe)
@@ -123,9 +115,7 @@ defaults write com.apple.dock expose-group-apps -bool true
 defaults write com.apple.dock wvous-tl-corner -int 2
 defaults write com.apple.dock wvous-tl-modifier -int 0
 
-# =============================================================================
-# DISPLAYS
-# =============================================================================
+## Displays
 log "Configuring display resolution..."
 
 # Note: Resolution setting requires displayplacer
@@ -145,9 +135,7 @@ else
     warn "Then manually set resolution to 2056x1329 or run this script again"
 fi
 
-# =============================================================================
-# WALLPAPER
-# =============================================================================
+## Wallpaper
 log "Configuring wallpaper..."
 
 # Set wallpaper to solid black color
@@ -161,34 +149,26 @@ else
     warn "Set wallpaper manually via System Settings > Wallpaper"
 fi
 
-# =============================================================================
-# SOUND
-# =============================================================================
+## Sound
 log "Configuring sound settings..."
 
 # Disable startup sound
 sudo nvram StartupMute=%01
 
-# =============================================================================
-# LOCK SCREEN
-# =============================================================================
+## Lock Screen
 log "Configuring lock screen..."
 
 # Show Sleep, Restart, and Shutdown buttons on lock screen
 sudo defaults write /Library/Preferences/com.apple.loginwindow PowerOffDisabled -bool false
 
-# =============================================================================
-# PRIVACY & SECURITY
-# =============================================================================
+## Privacy & Security
 log "Configuring privacy and security..."
 
 # Allow apps from App Store and identified developers
 sudo spctl --master-enable
 sudo spctl --global-enable
 
-# =============================================================================
-# SCREENSHOTS
-# =============================================================================
+## Screenshots
 log "Configuring screenshots..."
 
 # Create screenshots directory if it doesn't exist
@@ -210,9 +190,7 @@ defaults write com.apple.screencapture include-date -bool true
 # Restart SystemUIServer to apply screenshot changes
 killall SystemUIServer 2>/dev/null || true
 
-# =============================================================================
-# TRACKPAD GESTURES
-# =============================================================================
+## Trackpad Gestures
 log "Configuring trackpad gestures..."
 
 # Show Desktop (formerly pinch gesture, now configurable in System Settings)
@@ -244,9 +222,7 @@ defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeF
 defaults write com.apple.AppleMultitouchTrackpad Clicking -bool true
 defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool true
 
-# =============================================================================
-# KEYBOARD
-# =============================================================================
+## Keyboard
 log "Configuring keyboard settings..."
 
 # Disable dictation (allows Fn key for other purposes)
@@ -263,9 +239,7 @@ defaults write com.apple.assistant.support "Dictation Enabled" -bool false
 # defaults write NSGlobalDomain KeyRepeat -int 2
 # defaults write NSGlobalDomain InitialKeyRepeat -int 15
 
-# =============================================================================
-# MENU BAR CLOCK (With Seconds)
-# =============================================================================
+## Menu Bar Clock (With Seconds)
 log "Configuring menu bar clock..."
 
 # Show seconds in menu bar clock
@@ -285,9 +259,7 @@ defaults write com.apple.menuextra.clock ShowDayOfWeek -bool true
 # "EEE h:mm:ss" = "Mon 3:45:30" (compact with seconds)
 defaults write com.apple.menuextra.clock DateFormat -string "EEE MMM d  h:mm:ss a"
 
-# =============================================================================
-# FINDER PREFERENCES
-# =============================================================================
+## Finder Preferences
 log "Configuring Finder preferences..."
 
 # Show hidden files
@@ -323,9 +295,7 @@ chflags nohidden ~/Library
 # Show the /Volumes folder
 sudo chflags nohidden /Volumes
 
-# =============================================================================
-# SPOTLIGHT (Redesigned in macOS 26 Tahoe)
-# =============================================================================
+## Spotlight (Redesigned in macOS 26 Tahoe)
 log "Configuring Spotlight..."
 
 # Enable Spotlight clipboard history
@@ -337,18 +307,14 @@ log "Configuring Spotlight..."
 # sudo mdutil -i off /Volumes/Code/.builds
 # sudo mdutil -i off /Volumes/Data/.caches
 
-# =============================================================================
-# APPLICATION SETTINGS
-# =============================================================================
+## Application Settings
 log "Configuring application settings..."
 
 # Activity Monitor: Show CPU graph in Dock icon
 # Icon types: 0=CPU, 1=CPU History, 2=Network, 3=Disk, 4=Memory, 5=CPU Meter, 6=CPU Graph
 defaults write com.apple.ActivityMonitor IconType -int 6
 
-# =============================================================================
-# RESTART AFFECTED APPLICATIONS
-# =============================================================================
+## Restart Affected Applications
 log "Restarting affected applications..."
 
 # Kill affected applications to apply changes
@@ -360,9 +326,7 @@ killall Finder 2>/dev/null || true
 # Note: Some changes require logout/restart to take full effect
 warn "Some changes may require logging out or restarting for full effect"
 
-# =============================================================================
-# COMPLETION
-# =============================================================================
+## Completion
 log "✅ macOS 26 Tahoe preferences configured successfully!"
 echo ""
 echo "Summary of changes applied:"

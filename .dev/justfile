@@ -4,6 +4,7 @@
 set shell := ["bash", "-cu"]
 
 DEV_DIR := justfile_directory()
+SCRIPTS_DIR := DEV_DIR / "scripts"
 DOTFILES_DIR := parent_directory(DEV_DIR)
 
 # Show dev commands
@@ -12,23 +13,15 @@ default:
 
 # Install CLT and Homebrew from .cache/ (offline installers)
 setup:
-    "{{DEV_DIR}}/setup.sh"
+    "{{SCRIPTS_DIR}}/setup.sh"
 
 # Pre-fetch Homebrew packages: test (default), work, personal, all
 prefetch *args:
-    "{{DEV_DIR}}/prefetch.sh" {{args}}
+    "{{SCRIPTS_DIR}}/prefetch.sh" {{args}}
 
-# Run bootstrap: local (default) or curl (emulates curl|bash)
-bootstrap mode="local" *args:
-    #!/usr/bin/env bash
-    set -e
-    cd "{{DOTFILES_DIR}}"
-    if [[ "{{mode}}" == "curl" ]]; then
-        echo "Emulating: curl ... | bash -s -- --reveal test {{args}}"
-        cat bootstrap.sh | bash -s -- --reveal test {{args}}
-    else
-        ./bootstrap.sh --reveal test {{args}}
-    fi
+# Test bootstrap: local (default) or curl (emulates curl|bash)
+bootstrap *args:
+    "{{SCRIPTS_DIR}}/test.sh" {{args}}
 
 # Run install with test bundle visible
 install:
@@ -36,16 +29,4 @@ install:
 
 # Run linters (shellcheck + zsh syntax)
 lint:
-    #!/usr/bin/env bash
-    set -e
-    echo "Running ShellCheck..."
-    find "{{DOTFILES_DIR}}" -type f \( -name "*.sh" -o -name "*.bash" \) \
-        ! -path "*/.git/*" ! -path "*/.cache/*" \
-        -exec shellcheck --severity=warning -x {} +
-    echo ""
-    echo "Checking Zsh syntax..."
-    find "{{DOTFILES_DIR}}" -type f \( -name "zshrc*" -o -name "zshenv*" -o -name "*.zsh" \) \
-        ! -path "*/.git/*" ! -path "*/.cache/*" \
-        -exec zsh -n {} \;
-    echo ""
-    echo "All checks passed!"
+    "{{SCRIPTS_DIR}}/lint.sh"

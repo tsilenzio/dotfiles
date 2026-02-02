@@ -13,9 +13,7 @@ if [[ "$DOTFILES_PREFLIGHT_DONE" == "true" ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
-# ============================================================================
-# Sudoers setup/cleanup (available to caller after sourcing)
-# ============================================================================
+## Sudoers setup/cleanup (available to caller after sourcing)
 PREFLIGHT_SUDOERS_FILE="/etc/sudoers.d/dotfiles-temp"
 
 preflight_cleanup() {
@@ -25,9 +23,7 @@ preflight_cleanup() {
     fi
 }
 
-# ============================================================================
-# Request permissions
-# ============================================================================
+## Request permissions
 echo ""
 echo "Requesting permissions (approve these prompts to continue)..."
 
@@ -47,9 +43,7 @@ osascript -e 'tell application "System Events" to tell every desktop to get pict
 
 echo "  ✓ Permissions requested"
 
-# ============================================================================
-# Create temporary passwordless sudo
-# ============================================================================
+## Create temporary passwordless sudo
 echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee "$PREFLIGHT_SUDOERS_FILE" > /dev/null
 sudo chmod 440 "$PREFLIGHT_SUDOERS_FILE"
 

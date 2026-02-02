@@ -26,7 +26,7 @@ git clone https://github.com/tsilenzio/dotfiles.git ~/.dotfiles
 - **Homebrew** packages organized by bundle
 - **macOS** preferences automation
 - **Dock** customization
-- **Secrets** management with age encryption
+- **Secrets** management with age encryption and cloud backup
 
 ## Bundles
 
@@ -56,7 +56,7 @@ just upgrade          # Re-apply bundles (packages + symlinks)
 just update           # Pull latest changes (creates rollback point)
 just history          # Show available rollback points
 just rollback [id]    # Rollback to previous state
-just secrets ...      # Secrets management (init, encrypt, decrypt)
+just secrets ...      # Secrets management (init, backup, restore)
 ```
 
 ## Structure
@@ -86,7 +86,8 @@ just secrets ...      # Secrets management (init, encrypt, decrypt)
 │   ├── upgrade.sh
 │   ├── update.sh
 │   ├── rollback.sh
-│   └── secrets.sh
+│   ├── secrets.sh
+│   └── platform.sh
 ├── secrets/                   # Encrypted secrets (age)
 ├── loaded/                    # Symlinks to active bundles (for glob discovery)
 ├── bootstrap.sh
@@ -151,8 +152,3 @@ The bundle will automatically appear in the selection menu.
 - macOS 15+ (Sequoia)
 - Internet connection (for Homebrew)
 
-## Documentation
-
-- [Secrets Management](docs/secrets-management.md) - SSH/GPG key encryption
-- [Custom App Icons](docs/custom-app-icons.md) - Replace app icons
-- [GPG Extended Cache](docs/gpg-extended-cache.md) - Workaround for pinentry-touchid

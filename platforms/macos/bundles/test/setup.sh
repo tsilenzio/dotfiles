@@ -19,14 +19,10 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 echo "Installing test packages (minimal set)..."
 
-# ============================================================================
-# Install Brewfile
-# ============================================================================
+## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
-# ============================================================================
-# Minimal symlinks for testing
-# ============================================================================
+## Minimal symlinks for testing
 echo ""
 echo "Configuring minimal symlinks..."
 

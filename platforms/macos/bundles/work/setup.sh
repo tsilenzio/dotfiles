@@ -19,14 +19,10 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 echo "Installing work packages..."
 
-# ============================================================================
-# Install Brewfile
-# ============================================================================
+## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
-# ============================================================================
-# Bundle-specific config overrides
-# ============================================================================
+## Bundle-specific config overrides
 if [[ -d "$BUNDLE_DIR/config" ]]; then
     echo ""
     echo "Applying work config overrides..."

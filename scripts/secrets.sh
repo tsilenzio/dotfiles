@@ -128,7 +128,6 @@ cleanup_key() {
 }
 trap cleanup_key EXIT
 
-# Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -140,14 +139,57 @@ warn() { echo -e "${YELLOW}[secrets] WARNING: $1${NC}"; }
 error() { echo -e "${RED}[secrets] ERROR: $1${NC}"; exit 1; }
 info() { echo -e "${BLUE}[secrets] $1${NC}"; }
 
+## GPG Loopback Pinentry
+# Temporarily enable loopback pinentry for stdin passphrase input.
+# Usage: setup_gpg_loopback; trap cleanup_gpg_loopback RETURN
+
+GPG_LOOPBACK_ADDED=false
+GPG_LOOPBACK_CONF="$HOME/.gnupg/gpg-agent.conf"
+
+setup_gpg_loopback() {
+    GPG_LOOPBACK_ADDED=false
+    if ! grep -q "^allow-loopback-pinentry" "$GPG_LOOPBACK_CONF" 2>/dev/null; then
+        mkdir -p "$HOME/.gnupg"
+        echo "allow-loopback-pinentry" >> "$GPG_LOOPBACK_CONF"
+        GPG_LOOPBACK_ADDED=true
+        gpg-connect-agent reloadagent /bye >/dev/null 2>&1 || true
+    fi
+}
+
+cleanup_gpg_loopback() {
+    if [[ "$GPG_LOOPBACK_ADDED" == true ]]; then
+        if [[ -L "$GPG_LOOPBACK_CONF" ]]; then
+            local real_conf
+            real_conf=$(readlink -f "$GPG_LOOPBACK_CONF")
+            sed -i '' '/^allow-loopback-pinentry$/d' "$real_conf" 2>/dev/null || true
+        elif [[ -f "$GPG_LOOPBACK_CONF" ]]; then
+            sed -i '' '/^allow-loopback-pinentry$/d' "$GPG_LOOPBACK_CONF" 2>/dev/null || true
+        fi
+        gpg-connect-agent reloadagent /bye >/dev/null 2>&1 || true
+        GPG_LOOPBACK_ADDED=false
+    fi
+}
+
 usage() {
     cat << EOF
 Usage: $(basename "$0") <command> [options]
 
 Commands:
   init                    Initialize secrets (create age key, setup Keychain)
+  backup                  Backup SSH/GPG keys to encrypted storage + cloud
+    --ssh                 Backup SSH keys only
+    --gpg                 Backup GPG keys only (requires cloud)
+    --dir PATH            Cloud storage location (shorthand or full path)
+  restore                 Restore SSH/GPG keys from encrypted storage
+    --ssh                 Restore SSH keys only
+    --gpg                 Restore GPG keys only
+    --dir PATH            Cloud storage location (shorthand or full path)
+  reset                   Wipe all secrets and Keychain entry
+    --force               Required to confirm reset
   sync                    Encrypt unencrypted files in all secrets directories
     --dry-run             Show what would be encrypted without doing it
+  status                  Check secrets setup status
+  list                    List encrypted secrets
 
   encrypt <file>          Encrypt a file with SOPS
   decrypt <file>          Decrypt a file with SOPS
@@ -157,11 +199,10 @@ Commands:
   encrypt-raw <file>      Encrypt any file with age (for SSH/GPG keys)
   decrypt-raw <file>      Decrypt a .age file
 
-  list                    List encrypted secrets
-  status                  Check secrets setup status
-
   env                     Output decrypted env vars from hierarchy
     --inline              Output as KEY=val KEY2=val2 (for use with env command)
+
+Cloud shorthands: icloud, dropbox, gdrive, onedrive
 
 Secrets directories (in load order):
   ./secrets/                              Global
@@ -174,10 +215,11 @@ Options:
 
 Examples:
   $(basename "$0") init
+  $(basename "$0") backup --dir icloud
+  $(basename "$0") backup --ssh
+  $(basename "$0") restore
   $(basename "$0") sync --dry-run
   $(basename "$0") encrypt secrets/api-keys.yaml
-  $(basename "$0") edit secrets/api-keys.yaml
-  $(basename "$0") encrypt-raw ~/.ssh/id_ed25519
 EOF
     exit 0
 }
@@ -790,6 +832,349 @@ cmd_env() {
     fi
 }
 
+## Backup command
+
+cmd_backup() {
+    local do_ssh=false
+    local do_gpg=false
+    local dir=""
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --ssh) do_ssh=true; shift ;;
+            --gpg) do_gpg=true; shift ;;
+            --dir) dir="$2"; shift 2 ;;
+            --help|-h)
+                echo "Usage: secrets.sh backup [--ssh] [--gpg] [--dir <path>]"
+                echo ""
+                echo "Options:"
+                echo "  --ssh       Backup SSH keys only"
+                echo "  --gpg       Backup GPG keys only (requires cloud)"
+                echo "  --dir PATH  Cloud storage location (shorthand or path)"
+                echo ""
+                echo "If no --ssh or --gpg specified, backs up both."
+                echo ""
+                show_cloud_shorthands
+                exit 0
+                ;;
+            *) error "Unknown option: $1" ;;
+        esac
+    done
+
+    # If neither specified, do both
+    if [[ "$do_ssh" == false && "$do_gpg" == false ]]; then
+        do_ssh=true
+        do_gpg=true
+    fi
+
+    # Expand shorthand
+    [[ -n "$dir" ]] && dir=$(expand_cloud_shorthand "$dir")
+
+    backup_ssh() {
+        echo "Backing up SSH keys..."
+        mkdir -p "$SECRETS_DIR/ssh"
+        local found=0
+        for key in ~/.ssh/id_*; do
+            [[ -e "$key" ]] || continue
+            [[ "$key" == *.pub ]] && continue
+            echo "  Encrypting $(basename "$key")..."
+            cmd_encrypt_raw "$key"
+            found=1
+        done
+        [[ $found -eq 0 ]] && echo "  No SSH keys found in ~/.ssh/"
+        echo "SSH backup complete."
+    }
+
+    backup_gpg() {
+        echo "Backing up GPG secret keys..."
+        mkdir -p "$SECRETS_DIR/gpg"
+        if ! gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep -q "^sec"; then
+            echo "  No GPG secret keys found."
+            return 0
+        fi
+
+        # Get list of key IDs
+        local keyids=()
+        while IFS= read -r line; do
+            local keyid
+            keyid=$(echo "$line" | awk -F'/' '{print $2}' | awk '{print $1}')
+            keyids+=("$keyid")
+        done < <(gpg --list-secret-keys --keyid-format LONG | grep -E "^sec")
+
+        # Check which keys need backup
+        local keys_to_backup=()
+        for keyid in "${keyids[@]}"; do
+            if _is_gpg_key_backed_up "$keyid" "$dir" 2>/dev/null; then
+                echo "  ✓ Key $keyid already backed up (skipping)"
+            else
+                keys_to_backup+=("$keyid")
+            fi
+        done
+
+        if [[ ${#keys_to_backup[@]} -eq 0 ]]; then
+            echo "  All GPG keys already backed up."
+            echo "GPG backup complete."
+            return 0
+        fi
+
+        # Setup loopback pinentry for terminal passphrase input
+        setup_gpg_loopback
+        trap cleanup_gpg_loopback RETURN
+
+        # Process each key
+        for keyid in "${keys_to_backup[@]}"; do
+            echo ""
+            echo "  Backing up key $keyid..."
+            echo "  Enter passphrase for this key:"
+            echo -n "  Passphrase: "
+            local KEY_PASSPHRASE
+            read -rs KEY_PASSPHRASE < /dev/tty
+            echo ""
+
+            # Export the key
+            echo "  Exporting key..."
+            echo "$KEY_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
+                --export-secret-keys --armor "$keyid" > "/tmp/gpg-$keyid.asc"
+
+            if [[ ! -s "/tmp/gpg-$keyid.asc" ]]; then
+                echo "  ✗ Export failed (wrong passphrase?)"
+                rm -f "/tmp/gpg-$keyid.asc"
+                continue
+            fi
+
+            # Encrypt and store
+            cmd_encrypt_raw "/tmp/gpg-$keyid.asc" "$SECRETS_DIR/gpg/$keyid.asc.age"
+            rm -P "/tmp/gpg-$keyid.asc"
+
+            # Store passphrase in cloud
+            _cloud_backup_gpg_passphrase "$keyid" "$KEY_PASSPHRASE" "$dir"
+
+            echo "  ✓ Key $keyid backed up"
+        done
+        echo ""
+        echo "GPG backup complete."
+    }
+
+    backup_cloud() {
+        echo "Backing up age passphrase to cloud..."
+        if [[ -n "$dir" ]]; then
+            _cloud_backup --dir "$dir"
+        else
+            _cloud_backup
+        fi
+    }
+
+    # GPG requires cloud for passphrase storage
+    if [[ "$do_gpg" == true ]]; then
+        if ! backup_cloud; then
+            echo ""
+            echo "GPG backup requires cloud storage for passphrase backup."
+            echo "Run: secrets.sh backup --dir <cloud-path>"
+            echo ""
+            echo "Or backup SSH keys only: secrets.sh backup --ssh"
+            exit 1
+        fi
+        echo ""
+    fi
+
+    # Backup SSH
+    if [[ "$do_ssh" == true ]]; then
+        backup_ssh
+        echo ""
+    fi
+
+    # Backup GPG
+    if [[ "$do_gpg" == true ]]; then
+        backup_gpg
+    fi
+}
+
+## Restore command
+
+cmd_restore() {
+    local do_ssh=false
+    local do_gpg=false
+    local dir=""
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --ssh) do_ssh=true; shift ;;
+            --gpg) do_gpg=true; shift ;;
+            --dir) dir="$2"; shift 2 ;;
+            --help|-h)
+                echo "Usage: secrets.sh restore [--ssh] [--gpg] [--dir <path>]"
+                echo ""
+                echo "Options:"
+                echo "  --ssh       Restore SSH keys only"
+                echo "  --gpg       Restore GPG keys only"
+                echo "  --dir PATH  Cloud storage location (shorthand or path)"
+                echo ""
+                echo "If no --ssh or --gpg specified, restores both."
+                echo ""
+                show_cloud_shorthands
+                exit 0
+                ;;
+            *) error "Unknown option: $1" ;;
+        esac
+    done
+
+    # If neither specified, do both
+    if [[ "$do_ssh" == false && "$do_gpg" == false ]]; then
+        do_ssh=true
+        do_gpg=true
+    fi
+
+    # Expand shorthand
+    [[ -n "$dir" ]] && dir=$(expand_cloud_shorthand "$dir")
+
+    restore_cloud() {
+        echo "Checking for cloud backup..."
+        if [[ -n "$dir" ]]; then
+            if _cloud_restore --dir "$dir"; then
+                echo ""
+            else
+                echo "  No cloud backup found (continuing with manual passphrase)"
+                echo ""
+            fi
+        else
+            if _cloud_restore; then
+                echo ""
+            else
+                echo "  No cloud backup found (continuing with manual passphrase)"
+                echo ""
+            fi
+        fi
+    }
+
+    restore_ssh() {
+        echo "Restoring SSH keys..."
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        for f in "$SECRETS_DIR"/ssh/*.age; do
+            [[ -e "$f" ]] || { echo "  No SSH keys found in secrets/ssh/"; return 0; }
+            local name
+            name=$(basename "$f" .age)
+            echo "  Decrypting $name..."
+            cmd_decrypt_raw "$f" "$HOME/.ssh/$name"
+            chmod 600 "$HOME/.ssh/$name"
+        done
+        echo "SSH keys restored."
+    }
+
+    restore_gpg() {
+        echo "Restoring GPG keys..."
+        local has_keys=false
+        for f in "$SECRETS_DIR"/gpg/*.age; do
+            [[ -e "$f" ]] && has_keys=true && break
+        done
+        if [[ "$has_keys" == false ]]; then
+            echo "  No GPG keys found in secrets/gpg/"
+            return 0
+        fi
+
+        # Setup loopback pinentry for terminal passphrase input
+        setup_gpg_loopback
+        trap cleanup_gpg_loopback RETURN
+
+        for f in "$SECRETS_DIR"/gpg/*.age; do
+            [[ -e "$f" ]] || continue
+            local name keyid
+            name=$(basename "$f" .age)
+            keyid=$(echo "$name" | sed 's/\.asc$//')
+
+            echo ""
+            echo "  Restoring key $keyid..."
+
+            # Try to get passphrase from cloud
+            local KEY_PASSPHRASE
+            KEY_PASSPHRASE=$(_cloud_get_gpg_passphrase "$keyid" "$dir" 2>/dev/null) || true
+
+            if [[ -z "$KEY_PASSPHRASE" ]]; then
+                echo "  No cloud passphrase found for $keyid"
+                echo "  Enter passphrase for this key:"
+                echo -n "  Passphrase: "
+                read -rs KEY_PASSPHRASE < /dev/tty
+                echo ""
+            else
+                echo "  ✓ Retrieved passphrase from cloud"
+            fi
+
+            # Decrypt and import
+            cmd_decrypt_raw "$f" "/tmp/$name"
+            echo "$KEY_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
+                --import "/tmp/$name" 2>&1 || {
+                echo "  ✗ Import failed (wrong passphrase?)"
+                rm -P "/tmp/$name"
+                continue
+            }
+            rm -P "/tmp/$name"
+            echo "  ✓ Key $keyid imported"
+        done
+        echo ""
+        echo "GPG keys restored."
+    }
+
+    # Always try cloud restore first
+    restore_cloud
+
+    # Restore SSH
+    if [[ "$do_ssh" == true ]]; then
+        restore_ssh
+    fi
+
+    # Restore GPG
+    if [[ "$do_gpg" == true ]]; then
+        restore_gpg
+    fi
+}
+
+## Reset command
+
+cmd_reset() {
+    local force=false
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --force) force=true; shift ;;
+            --help|-h)
+                echo "Usage: secrets.sh reset [--force]"
+                echo ""
+                echo "Wipe all secrets and remove Keychain entry."
+                echo "Requires --force to confirm."
+                exit 0
+                ;;
+            *) error "Unknown option: $1" ;;
+        esac
+    done
+
+    if [[ "$force" != true ]]; then
+        echo "This will DELETE all secrets and remove the Keychain entry."
+        echo "  - $SECRETS_DIR/*"
+        echo "  - Keychain: dotfiles-age"
+        echo ""
+        echo "To confirm, run: secrets.sh reset --force"
+        exit 1
+    fi
+
+    echo "Resetting secrets..."
+
+    # Remove all files except .gitignore
+    find "$SECRETS_DIR" -mindepth 1 ! -name '.gitignore' -delete 2>/dev/null || true
+    echo "  ✓ Removed secrets files"
+
+    # Remove Keychain entry
+    if security delete-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" 2>/dev/null; then
+        echo "  ✓ Removed Keychain entry"
+    else
+        echo "  - Keychain entry not found (already removed)"
+    fi
+
+    echo ""
+    echo "Secrets reset complete. Run 'secrets.sh init' to start fresh."
+}
+
 cmd_status() {
     echo "Secrets Status"
     echo "=============="
@@ -890,57 +1275,17 @@ case "$command" in
     init)
         cmd_init
         ;;
+    backup)
+        cmd_backup "$@"
+        ;;
+    restore)
+        cmd_restore "$@"
+        ;;
+    reset)
+        cmd_reset "$@"
+        ;;
     sync)
         cmd_sync "$1"
-        ;;
-    _cloud-backup)
-        _cloud_backup "$@"
-        ;;
-    _cloud-restore)
-        _cloud_restore "$@"
-        ;;
-    _cloud-status)
-        _cloud_status "$1"
-        ;;
-    _cloud-backup-gpg-passphrase)
-        # Usage: _cloud-backup-gpg-passphrase <keyid> <passphrase> [--dir <path>]
-        keyid="$1"
-        passphrase="$2"
-        shift 2
-        dir=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --dir) dir="$2"; shift 2 ;;
-                *) shift ;;
-            esac
-        done
-        _cloud_backup_gpg_passphrase "$keyid" "$passphrase" "$dir"
-        ;;
-    _cloud-get-gpg-passphrase)
-        # Usage: _cloud-get-gpg-passphrase <keyid> [--dir <path>]
-        keyid="$1"
-        shift
-        dir=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --dir) dir="$2"; shift 2 ;;
-                *) shift ;;
-            esac
-        done
-        _cloud_get_gpg_passphrase "$keyid" "$dir"
-        ;;
-    _is-gpg-backed-up)
-        # Usage: _is-gpg-backed-up <keyid> [--dir <path>]
-        keyid="$1"
-        shift
-        dir=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --dir) dir="$2"; shift 2 ;;
-                *) shift ;;
-            esac
-        done
-        _is_gpg_key_backed_up "$keyid" "$dir"
         ;;
     encrypt)
         output=""

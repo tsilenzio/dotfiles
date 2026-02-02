@@ -16,9 +16,7 @@
 
 set -e
 
-# ============================================================================
-# Parse arguments
-# ============================================================================
+## Parse arguments
 TARGET_DIR=""
 FORCE=false
 CLONE=false
@@ -92,9 +90,7 @@ TARGET_DIR="${TARGET_DIR%/}"  # Normalize: remove trailing slash
 REPO_URL="https://github.com/tsilenzio/dotfiles.git"
 TARBALL_URL="https://github.com/tsilenzio/dotfiles/archive/refs/heads/main.tar.gz"
 
-# ============================================================================
-# Helper functions
-# ============================================================================
+## Helper functions
 
 # Check if git command is available (not just macOS shim that triggers CLT dialog)
 is_git_available() {
@@ -237,9 +233,7 @@ init_git_repo() {
     return 0
 }
 
-# ============================================================================
-# Main
-# ============================================================================
+## Main
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
@@ -266,9 +260,7 @@ if [[ -f "$TARGET_DIR/.allowunsafe" ]] || { [[ -n "$SOURCE_DIR" ]] && [[ -f "$SO
     echo ""
 fi
 
-# ============================================================================
-# Determine scenario and act accordingly
-# ============================================================================
+## Determine scenario and act accordingly
 
 # Same directory - just run install.sh
 if [[ "$SOURCE_DIR" == "$TARGET_DIR" ]]; then
@@ -289,9 +281,7 @@ SOURCE_CONFIGURED=false
 [[ "$TARGET_HAS_GIT" == true ]] && is_dirty "$TARGET_DIR" && TARGET_IS_DIRTY=true
 [[ -n "$SOURCE_DIR" ]] && is_configured "$SOURCE_DIR" && SOURCE_CONFIGURED=true
 
-# ============================================================================
-# Curl pipe scenarios
-# ============================================================================
+## Curl pipe scenarios
 if [[ "$IS_CURL" == true ]]; then
 
     # Scenario 9: Curl, target has state - just upgrade
@@ -366,9 +356,7 @@ if [[ "$IS_CURL" == true ]]; then
     exec "$TARGET_DIR/install.sh" "${PASSTHROUGH_ARGS[@]}"
 fi
 
-# ============================================================================
-# Local scenarios (source != target)
-# ============================================================================
+## Local scenarios (source != target)
 
 # Scenarios 5 & 6: Target has state - sync code and upgrade
 if [[ "$TARGET_CONFIGURED" == true ]]; then

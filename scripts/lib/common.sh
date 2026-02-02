@@ -5,17 +5,13 @@
 #
 # Requires DOTFILES_DIR to be set before sourcing
 
-# ============================================================================
 # Guard against double-sourcing
-# ============================================================================
 [[ -n "$_DOTFILES_LIB_COMMON_LOADED" ]] && return 0
 _DOTFILES_LIB_COMMON_LOADED=1
 
-# ============================================================================
-# Symlink Management
-# ============================================================================
+## Symlink Management
 
-# Safe symlink: backup existing file if it's not already pointing to our target
+# Backup existing file if it's not already pointing to our target
 # Usage: safe_link <target> <link_path>
 safe_link() {
     local target="$1"
@@ -40,12 +36,9 @@ safe_link() {
     echo "  ✓ $link → $target"
 }
 
-# ============================================================================
-# Directory Setup
-# ============================================================================
+## Directory Setup
 
 # Create standard config directories with proper permissions
-# Usage: ensure_config_dirs
 ensure_config_dirs() {
     mkdir -p "$HOME/.config"
     mkdir -p "$HOME/.config/mise"
@@ -56,12 +49,9 @@ ensure_config_dirs() {
     chmod 700 "$HOME/.gnupg"
 }
 
-# ============================================================================
-# Homebrew
-# ============================================================================
+## Homebrew
 
 # Install packages from a Brewfile
-# Usage: install_brewfile <brewfile_path>
 install_brewfile() {
     local brewfile="$1"
 
@@ -75,12 +65,9 @@ install_brewfile() {
     }
 }
 
-# ============================================================================
-# Config Symlinks
-# ============================================================================
+## Config Symlinks
 
 # Link base configs from DOTFILES_DIR/config to home
-# Usage: link_base_configs
 link_base_configs() {
     local config_dir="$DOTFILES_DIR/config"
 
@@ -96,7 +83,6 @@ link_base_configs() {
 }
 
 # Apply bundle-specific config overrides
-# Usage: apply_config_overrides <bundle_dir>
 apply_config_overrides() {
     local bundle_dir="$1"
     local config_dir="$bundle_dir/config"
@@ -124,13 +110,9 @@ apply_config_overrides() {
     done < <(find "$config_dir" -type f -print0 2>/dev/null)
 }
 
-# ============================================================================
-# Bundle Management
-# ============================================================================
-# These functions require BUNDLES_DIR to be set before use
+## Bundle Management (requires BUNDLES_DIR)
 
-# Get bundle config value
-# Usage: get_bundle_conf <bundle_id> <key> [default]
+# Get bundle config value: get_bundle_conf <bundle_id> <key> [default]
 get_bundle_conf() {
     local bundle_id="$1"
     local key="$2"
@@ -154,7 +136,6 @@ get_bundle_conf() {
 }
 
 # Check if bundle exists and is enabled
-# Usage: is_bundle_available <bundle_id>
 is_bundle_available() {
     local bundle_id="$1"
     local bundle_dir="$BUNDLES_DIR/$bundle_id"
@@ -168,24 +149,20 @@ is_bundle_available() {
     return 0
 }
 
-# Resolve dependencies for a list of bundles (recursive)
-# Usage: resolve_dependencies bundle1 bundle2 ...
-# Outputs: all bundles including dependencies, in dependency order
+# Resolve dependencies recursively, returns bundles in dependency order
 resolve_dependencies() {
     local -a input_bundles=("$@")
     local -a resolved=()
     local -a seen=()
 
-    # Recursive helper
     resolve_one() {
         local bundle="$1"
 
-        # Skip if already resolved
         for b in "${resolved[@]}"; do
             [[ "$b" == "$bundle" ]] && return 0
         done
 
-        # Check for circular dependency
+        # Circular dependency check
         for b in "${seen[@]}"; do
             if [[ "$b" == "$bundle" ]]; then
                 echo "Error: Circular dependency detected involving '$bundle'" >&2
@@ -195,13 +172,12 @@ resolve_dependencies() {
 
         seen+=("$bundle")
 
-        # Verify bundle exists
         if ! is_bundle_available "$bundle"; then
             echo "Error: Bundle '$bundle' not found or disabled" >&2
             return 1
         fi
 
-        # Get and resolve dependencies first
+        # Resolve dependencies first
         local requires
         requires=$(get_bundle_conf "$bundle" "requires" "")
         if [[ -n "$requires" ]]; then
@@ -212,28 +188,23 @@ resolve_dependencies() {
             done
         fi
 
-        # Add this bundle after its dependencies
         resolved+=("$bundle")
     }
 
-    # Resolve each input bundle
     for bundle in "${input_bundles[@]}"; do
         resolve_one "$bundle" || return 1
     done
 
-    # Output resolved bundles
     printf '%s\n' "${resolved[@]}"
 }
 
-# Sort bundles by order
-# Usage: sort_by_order < bundles_list
+# Sort bundles by order field (pipe bundle list to this function)
 sort_by_order() {
     local -a bundles=()
     while IFS= read -r bundle; do
         [[ -n "$bundle" ]] && bundles+=("$bundle")
     done
 
-    # Build sortable list: order|bundle_id
     for bundle in "${bundles[@]}"; do
         local order
         order=$(get_bundle_conf "$bundle" "order" "50")
@@ -241,20 +212,17 @@ sort_by_order() {
     done | sort -t'|' -k1 -n | cut -d'|' -f2
 }
 
-# Discover available bundles from directory structure
-# Returns: bundle_id|name|description|order|requires (sorted by order)
-# Hidden bundles are excluded unless in REVEALED array
-# Requires: BUNDLES_DIR, REVEALED (array, optional)
+# Discover available bundles, returns: bundle_id|name|description|order|requires
+# Hidden bundles excluded unless in REVEALED array
 discover_bundles() {
     for bundle_dir in "$BUNDLES_DIR"/*/; do
         [[ ! -d "$bundle_dir" ]] && continue
         local bundle_id
         bundle_id=$(basename "$bundle_dir")
 
-        # Skip if not available (disabled, etc.)
         is_bundle_available "$bundle_id" || continue
 
-        # Skip hidden bundles unless explicitly revealed via REVEALED array
+        # Skip hidden bundles unless revealed
         local hidden
         hidden=$(get_bundle_conf "$bundle_id" "hidden" "false")
         if [[ "$hidden" == "true" ]]; then
@@ -272,30 +240,23 @@ discover_bundles() {
     done | sort -t'|' -k4 -n
 }
 
-# ============================================================================
-# Loaded Bundles Symlinks
-# ============================================================================
+## Loaded Bundles Symlinks
 
-# Setup the loaded/ directory with symlinks to active bundles
-# This enables glob-based auto-discovery: source "$DOTFILES_DIR/loaded/*/config/zsh/*.zsh"
-# Usage: setup_loaded_symlinks bundle1 bundle2 ...
-# Requires: DOTFILES_DIR, BUNDLES_DIR
+# Setup loaded/ directory with symlinks to active bundles for glob-based auto-discovery
 setup_loaded_symlinks() {
     local -a bundles=("$@")
     local state_loaded="$DOTFILES_DIR/.state/loaded"
     local root_loaded="$DOTFILES_DIR/loaded"
 
-    # Create .state/loaded/ directory
     mkdir -p "$state_loaded"
 
-    # Create ./loaded symlink to .state/loaded/ if needed
+    # Create ./loaded symlink to .state/loaded/
     if [[ -L "$root_loaded" ]]; then
         if [[ "$(readlink "$root_loaded")" != ".state/loaded" ]]; then
             rm -f "$root_loaded"
             ln -s ".state/loaded" "$root_loaded"
         fi
     elif [[ -e "$root_loaded" ]]; then
-        # Something else exists there, back it up
         local backup
         backup="${root_loaded}.backup.$(date +%Y%m%d-%H%M%S)"
         mv "$root_loaded" "$backup"
@@ -305,10 +266,8 @@ setup_loaded_symlinks() {
         ln -s ".state/loaded" "$root_loaded"
     fi
 
-    # Clear existing symlinks in loaded/
     find "$state_loaded" -maxdepth 1 -type l -delete 2>/dev/null || true
 
-    # Create symlinks for each active bundle
     for bundle in "${bundles[@]}"; do
         local bundle_dir="$BUNDLES_DIR/$bundle"
         if [[ -d "$bundle_dir" ]]; then
@@ -319,11 +278,7 @@ setup_loaded_symlinks() {
     echo "  ✓ loaded/ symlinks created for: ${bundles[*]}"
 }
 
-# ============================================================================
-# Logging
-# ============================================================================
-
-# Colored output helpers (only if terminal supports it)
+## Logging (colors disabled if not a terminal)
 if [[ -t 1 ]]; then
     _GREEN='\033[0;32m'
     _YELLOW='\033[1;33m'
@@ -342,3 +297,16 @@ log_info()    { echo -e "${_BLUE}[info]${_NC} $1"; }
 log_success() { echo -e "${_GREEN}[ok]${_NC} $1"; }
 log_warn()    { echo -e "${_YELLOW}[warn]${_NC} $1"; }
 log_error()   { echo -e "${_RED}[error]${_NC} $1"; }
+
+## Platform Detection
+
+detect_os() {
+    case "$(uname -s)" in
+        Darwin) echo "macos" ;;
+        Linux) echo "linux" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
+is_linux() { [[ "$(uname -s)" == "Linux" ]]; }

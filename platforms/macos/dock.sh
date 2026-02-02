@@ -21,16 +21,12 @@ fi
 
 log "Configuring Dock..."
 
-# =============================================================================
-# REMOVE ALL EXISTING DOCK ITEMS
-# =============================================================================
+## Remove all existing dock items
 log "Removing all existing Dock items..."
 
 dockutil --remove all --no-restart
 
-# =============================================================================
-# ADD APPLICATIONS TO DOCK
-# =============================================================================
+## Add applications to dock
 log "Adding applications to Dock..."
 
 # Helper function to add app if it exists
@@ -60,9 +56,7 @@ add_folder() {
     fi
 }
 
-# =============================================================================
-# DOCK LAYOUT (Left to Right)
-# =============================================================================
+## Dock layout (left to right)
 
 # Finder (always first in macOS)
 add_app "Finder"
@@ -96,24 +90,18 @@ add_app "Notes"
 add_app "Spotify"
 add_app "Kindle"
 
-# =============================================================================
-# Phase 2: Bundle-specific apps (handled via override files)
-# =============================================================================
+## Phase 2: Bundle-specific apps (handled via override files)
 # NOTE: This script includes Slack and Outlook for work environments
 # For personal environment, create internal/personal/scripts/dock.sh without them
 # Or replace Slack with Discord, etc.
 
-# =============================================================================
-# Optional: Add folders/special items
-# =============================================================================
+## Optional: Add folders/special items
 # Uncomment if you want these:
 # add_folder "$HOME/Downloads" "stack" "dateadded"
 # add_folder "$HOME/Desktop" "stack" "dateadded"
 # add_folder "/Applications" "folder" "name"
 
-# =============================================================================
-# DOCK SETTINGS (applied after items to prevent reset)
-# =============================================================================
+## Dock settings (applied after items to prevent reset)
 log "Applying Dock settings..."
 
 # Dock size (icon size)
@@ -147,9 +135,7 @@ defaults write com.apple.dock minimize-to-application -bool true
 # Minimize effect (genie, scale, suck)
 defaults write com.apple.dock mineffect -string "scale"
 
-# =============================================================================
-# RESTART DOCK
-# =============================================================================
+## Restart dock
 log "Restarting Dock..."
 killall Dock
 

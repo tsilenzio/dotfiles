@@ -8,9 +8,7 @@ set -e
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DOTFILES_DIR
 
-# ============================================================================
-# Setup logging (tee to file while preserving /dev/tty for user input)
-# ============================================================================
+## Setup logging (tee to file while preserving /dev/tty for user input)
 LOG_DIR="$DOTFILES_DIR/.state/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
@@ -25,9 +23,7 @@ echo "  Log: $LOG_FILE"
 echo "════════════════════════════════════════════════════════════"
 echo ""
 
-# ============================================================================
-# Detect OS
-# ============================================================================
+## Detect OS
 detect_os() {
     case "$OSTYPE" in
         darwin*)  echo "macos" ;;
@@ -45,9 +41,7 @@ fi
 
 echo "Detected OS: $OS"
 
-# ============================================================================
-# Route to platform-specific installer
-# ============================================================================
+## Route to platform-specific installer
 PLATFORM_INSTALLER="$DOTFILES_DIR/platforms/$OS/install.sh"
 
 if [[ ! -f "$PLATFORM_INSTALLER" ]]; then
@@ -61,9 +55,7 @@ echo ""
 # Pass all arguments through to platform installer
 "$PLATFORM_INSTALLER" "$@"
 
-# ============================================================================
-# Completion
-# ============================================================================
+## Completion
 echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  Installation complete!"

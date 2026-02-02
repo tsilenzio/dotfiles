@@ -158,9 +158,14 @@ Once metadata is fetched, cached bottles are used for installation, avoiding the
 .dev/
 ├── README.md      # This file
 ├── init.sh        # Initialize dev environment (source this first)
-├── justfile       # Dev-specific recipes
-├── setup.sh       # Installs CLT + Homebrew from .cache/
-└── prefetch.sh    # Pre-fetches Homebrew packages
+├── justfile       # Dev-specific recipes (thin wrappers)
+└── scripts/
+    ├── lib/
+    │   └── common.sh  # Shared library (logging, paths)
+    ├── setup.sh       # Installs CLT + Homebrew from .cache/
+    ├── prefetch.sh    # Pre-fetches Homebrew packages
+    ├── test.sh        # Test bootstrap (local or curl mode)
+    └── lint.sh        # Run shellcheck + zsh syntax checks
 
 .cache/
 ├── .gitkeep                            # Documents what goes here

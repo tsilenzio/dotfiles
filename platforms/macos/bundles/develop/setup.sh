@@ -19,17 +19,13 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 echo "Installing develop packages..."
 
-# ============================================================================
-# Install Brewfile
-# ============================================================================
+## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
 # Kill apps that auto-launch after installation
 killall "zoom.us" 2>/dev/null || true
 
-# ============================================================================
-# Configure symlinks (base configs)
-# ============================================================================
+## Configure symlinks (base configs)
 echo ""
 echo "Configuring symlinks..."
 
