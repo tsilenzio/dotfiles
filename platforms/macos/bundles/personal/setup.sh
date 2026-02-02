@@ -18,23 +18,17 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 echo "Installing personal packages..."
 
-# ============================================================================
-# Install Brewfile
-# ============================================================================
+## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
-# ============================================================================
-# Bundle-specific config overrides
-# ============================================================================
+## Bundle-specific config overrides
 if [[ -d "$BUNDLE_DIR/config" ]]; then
     echo ""
     echo "Applying personal config overrides..."
     apply_config_overrides "$BUNDLE_DIR"
 fi
 
-# ============================================================================
-# Personal-specific setup
-# ============================================================================
+## Personal-specific setup
 if [[ "$MODE" == "install" ]]; then
     echo ""
     echo "First-time personal setup..."

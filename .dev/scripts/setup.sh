@@ -6,9 +6,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
+DEV_DIR="$(dirname "$SCRIPT_DIR")"
+DOTFILES_DIR="$(dirname "$DEV_DIR")"
 CACHE_DIR="$DOTFILES_DIR/.cache"
 PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
+
+source "$SCRIPT_DIR/lib/common.sh"
+create_logger "dev-setup"
 
 # Disable auto-update for any brew commands after installation
 export HOMEBREW_NO_AUTO_UPDATE=1
@@ -19,19 +23,8 @@ if [[ -f "$PLATFORM_DIR/preflight.sh" ]]; then
     trap preflight_cleanup EXIT
 fi
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+## Check cache directory
 
-log() { echo -e "${GREEN}[dev-setup]${NC} $1"; }
-warn() { echo -e "${YELLOW}[dev-setup]${NC} $1"; }
-info() { echo -e "${BLUE}[dev-setup]${NC} $1"; }
-
-# ============================================================================
-# Check cache directory
-# ============================================================================
 if [[ ! -d "$CACHE_DIR" ]]; then
     echo "Cache directory not found: $CACHE_DIR"
     echo ""
@@ -41,14 +34,12 @@ if [[ ! -d "$CACHE_DIR" ]]; then
     exit 1
 fi
 
-# ============================================================================
-# Install Xcode Command Line Tools
-# ============================================================================
+## Install Xcode Command Line Tools
+
 if xcode-select -p &>/dev/null; then
     log "Xcode Command Line Tools already installed"
 else
-    # Find CLT DMG in cache (use latest version if multiple exist)
-    # Supports: Command_Line_Tools_for_Xcode_16.1.dmg or Command_Line_Tools.dmg
+    # Find CLT DMG in cache (latest version if multiple exist)
     CLT_DMG=$(find "$CACHE_DIR" -maxdepth 1 -name "Command_Line_Tools_for_Xcode*.dmg" 2>/dev/null | sort -V | tail -1)
     if [[ -z "$CLT_DMG" ]]; then
         CLT_DMG=$(find "$CACHE_DIR" -maxdepth 1 -name "Command_Line_Tools.dmg" 2>/dev/null)
@@ -84,16 +75,14 @@ else
     fi
 fi
 
-# ============================================================================
-# Install Homebrew
-# ============================================================================
-# Check CLT is installed (required for Homebrew)
+## Install Homebrew (requires CLT)
+
 if ! xcode-select -p &>/dev/null; then
     warn "Skipping Homebrew: Command Line Tools not installed"
     exit 1
 fi
 
-# Check if Homebrew is installed (check PATH and common locations)
+# Check if Homebrew installed
 BREW_BIN=""
 if command -v brew &>/dev/null; then
     BREW_BIN="$(command -v brew)"
@@ -106,8 +95,7 @@ fi
 if [[ -n "$BREW_BIN" ]]; then
     log "Homebrew already installed at: $BREW_BIN"
 else
-    # Find Homebrew PKG in cache (use latest version if multiple exist)
-    # Supports: Homebrew-4.4.0.pkg or Homebrew.pkg
+    # Find Homebrew PKG in cache (latest version if multiple exist)
     BREW_PKG=$(find "$CACHE_DIR" -maxdepth 1 -name "Homebrew-*.pkg" 2>/dev/null | sort -V | tail -1)
     if [[ -z "$BREW_PKG" ]]; then
         BREW_PKG=$(find "$CACHE_DIR" -maxdepth 1 -name "Homebrew.pkg" 2>/dev/null)
@@ -123,9 +111,8 @@ else
     fi
 fi
 
-# ============================================================================
-# Add Homebrew to PATH for current session
-# ============================================================================
+## Add Homebrew to PATH for current session
+
 if [[ -x "/opt/homebrew/bin/brew" ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
     log "Homebrew added to PATH"

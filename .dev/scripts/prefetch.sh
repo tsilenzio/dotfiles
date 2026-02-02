@@ -14,24 +14,17 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOTFILES_DIR="$(dirname "$SCRIPT_DIR")"
+DEV_DIR="$(dirname "$SCRIPT_DIR")"
+DOTFILES_DIR="$(dirname "$DEV_DIR")"
 CACHE_DIR="$DOTFILES_DIR/.cache"
 HOMEBREW_CACHE_DIR="$CACHE_DIR/homebrew"
 BUNDLES_DIR="$DOTFILES_DIR/platforms/macos/bundles"
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+source "$SCRIPT_DIR/lib/common.sh"
+create_logger "dev-prefetch"
 
-log() { echo -e "${GREEN}[dev-prefetch]${NC} $1"; }
-warn() { echo -e "${YELLOW}[dev-prefetch]${NC} $1"; }
-info() { echo -e "${BLUE}[dev-prefetch]${NC} $1"; }
+## Check Homebrew
 
-# ============================================================================
-# Check Homebrew
-# ============================================================================
 if ! command -v brew &>/dev/null; then
     # Try to find Homebrew
     if [[ -f "/opt/homebrew/bin/brew" ]]; then
@@ -47,9 +40,8 @@ fi
 # Disable auto-update during prefetch (speeds up operations significantly)
 export HOMEBREW_NO_AUTO_UPDATE=1
 
-# ============================================================================
-# Determine which Brewfiles to use
-# ============================================================================
+## Determine which Brewfiles to use
+
 BREWFILES=()
 BUNDLES=("$@")
 
@@ -109,9 +101,8 @@ if [[ ${#BREWFILES[@]} -eq 0 ]]; then
     exit 1
 fi
 
-# ============================================================================
-# Pre-fetch Homebrew packages
-# ============================================================================
+## Pre-fetch Homebrew packages
+
 log "Pre-fetching Homebrew packages to: $HOMEBREW_CACHE_DIR"
 mkdir -p "$HOMEBREW_CACHE_DIR"
 export HOMEBREW_CACHE="$HOMEBREW_CACHE_DIR"
@@ -150,7 +141,6 @@ for bf in "${BREWFILES[@]}"; do
     PACKAGES+=$'\n'
 done
 
-# Sort and dedupe
 PACKAGES=$(echo "$PACKAGES" | grep -v '^$' | sort -u)
 
 if [[ -z "$PACKAGES" ]]; then

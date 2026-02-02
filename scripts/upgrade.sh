@@ -12,9 +12,7 @@ export DOTFILES_DIR
 
 BUNDLES_FILE="$DOTFILES_DIR/.bundles"
 
-# ============================================================================
-# Detect OS
-# ============================================================================
+## Detect OS
 case "$OSTYPE" in
     darwin*) OS="macos" ;;
     linux*)  OS="linux" ;;
@@ -26,9 +24,7 @@ BUNDLES_DIR="$DOTFILES_DIR/platforms/$OS/bundles"
 # Load shared library (provides get_bundle_conf, is_bundle_available, resolve_dependencies, sort_by_order)
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
-# ============================================================================
-# Parse flags
-# ============================================================================
+## Parse flags
 BUNDLES=()
 
 while [[ $# -gt 0 ]]; do
@@ -47,9 +43,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ============================================================================
-# Load saved bundles if none specified
-# ============================================================================
+## Load saved bundles if none specified
 if [[ ${#BUNDLES[@]} -eq 0 ]]; then
     if [[ -f "$BUNDLES_FILE" ]]; then
         BUNDLES=()
@@ -73,9 +67,7 @@ else
     echo "Upgrade order: ${BUNDLES[*]}"
 fi
 
-# ============================================================================
-# Ensure Homebrew is available
-# ============================================================================
+## Ensure Homebrew is available
 if ! command -v brew &>/dev/null; then
     if [[ -x "/opt/homebrew/bin/brew" ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -94,9 +86,7 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
-# ============================================================================
-# Run each bundle's setup.sh in upgrade mode
-# ============================================================================
+## Run each bundle's setup.sh in upgrade mode
 echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  Running bundle upgrades"
@@ -133,9 +123,7 @@ for bundle in "${BUNDLES[@]}"; do
     "$SETUP_SCRIPT" upgrade
 done
 
-# ============================================================================
-# Setup loaded/ symlinks for active bundles
-# ============================================================================
+## Setup loaded/ symlinks for active bundles
 echo ""
 echo "Setting up loaded/ symlinks..."
 setup_loaded_symlinks "${BUNDLES[@]}"
