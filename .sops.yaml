@@ -1,9 +1,9 @@
 # SOPS configuration for dotfiles secrets
-# Public key: age10vz5uuhpm7h9fcc5kpsy23wvjmk7m3sscwx7m79gj54yxy5m0fmq8ru3qc
+# Public key: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx
 
 creation_rules:
   - path_regex: secrets/.*\.(yaml|json|env|ini)$
-    age: age10vz5uuhpm7h9fcc5kpsy23wvjmk7m3sscwx7m79gj54yxy5m0fmq8ru3qc
+    age: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx
 
   - path_regex: .*\.enc\.(yaml|json|env|ini)$
-    age: age10vz5uuhpm7h9fcc5kpsy23wvjmk7m3sscwx7m79gj54yxy5m0fmq8ru3qc
+    age: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx

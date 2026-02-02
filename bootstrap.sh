@@ -24,8 +24,40 @@ FORCE=false
 CLONE=false
 PASSTHROUGH_ARGS=()
 
+show_help() {
+    cat << 'EOF'
+Dotfiles Bootstrap
+
+Usage:
+  ./bootstrap.sh [options] [target_dir]
+  curl -fsSL .../bootstrap.sh | bash
+  curl ... | bash -s -- [options] [target_dir]
+
+Options:
+  --help          Show this help message
+  --force         Skip safety checks and prompts
+  --clone         Copy state files (.bundles, .state/) when source is configured
+  --select NAME   Pre-select a bundle (can be used multiple times)
+  --reveal NAME   Show a hidden bundle in the selection menu
+
+Examples:
+  ./bootstrap.sh                          # Install to ~/.dotfiles
+  ./bootstrap.sh ~/my-dotfiles            # Install to custom location
+  ./bootstrap.sh --select core            # Pre-select core bundle
+  ./bootstrap.sh --reveal test            # Show hidden test bundle
+
+  curl -fsSL .../bootstrap.sh | bash                    # Remote install
+  curl ... | bash -s -- --select core --select develop  # Remote with bundles
+
+EOF
+    exit 0
+}
+
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -h|--help|help)
+            show_help
+            ;;
         --force)
             FORCE=true
             shift
@@ -101,6 +133,7 @@ is_unsafe_allowed() {
 is_dirty() {
     local dir="$1"
     [[ -d "$dir/.git" ]] || return 1
+    is_git_available || return 1  # Don't trigger CLT dialog
     cd "$dir" && [[ -n "$(git status --porcelain 2>/dev/null)" ]]
 }
 
@@ -312,6 +345,8 @@ if [[ "$IS_CURL" == true ]]; then
     # Download dotfiles
     if [[ "$TARGET_EXISTS" == true ]]; then
         echo "Removing existing files at $TARGET_DIR..."
+        # cd to safe location in case we're inside the target dir
+        cd "$HOME" || cd /tmp
         rm -rf "$TARGET_DIR"
     fi
 
@@ -414,6 +449,8 @@ fi
 # Perform the copy
 if [[ "$TARGET_EXISTS" == true ]]; then
     echo "Removing existing files at $TARGET_DIR..."
+    # cd to safe location in case we're inside the target dir
+    cd "$HOME" || cd /tmp
     rm -rf "$TARGET_DIR"
 fi
 
