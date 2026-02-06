@@ -33,6 +33,7 @@ CONFIG_DIR="$DOTFILES_DIR/config"
 
 [[ -f "$CONFIG_DIR/zsh/zshrc" ]] && safe_link "$CONFIG_DIR/zsh/zshrc" "$HOME/.zshrc"
 [[ -f "$CONFIG_DIR/zsh/zshenv" ]] && safe_link "$CONFIG_DIR/zsh/zshenv" "$HOME/.zshenv"
+[[ -f "$CONFIG_DIR/zsh/zprofile" ]] && safe_link "$CONFIG_DIR/zsh/zprofile" "$HOME/.zprofile"
 [[ -f "$CONFIG_DIR/git/gitconfig" ]] && safe_link "$CONFIG_DIR/git/gitconfig" "$HOME/.gitconfig"
 [[ -f "$CONFIG_DIR/git/gitignore" ]] && safe_link "$CONFIG_DIR/git/gitignore" "$HOME/.gitignore"
 [[ -f "$CONFIG_DIR/gnupg/gpg-agent.conf" ]] && safe_link "$CONFIG_DIR/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"

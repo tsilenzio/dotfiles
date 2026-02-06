@@ -28,8 +28,12 @@ export PATH=$PATH:$HOME/.pub-cache/bin
 # ============================================================================
 # Tool Initialization
 # ============================================================================
-# Homebrew (already done in zshenv for non-interactive shells)
+# Interactive shells (login or not)
+# Examples: new terminal window, SSH session, running `zsh` in existing shell
 if [[ -o interactive ]]; then
+    # Homebrew
+    [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+
     # Mise (replaces asdf/rbenv/nvm/etc)
     command -v mise &> /dev/null && eval "$(mise activate zsh)"
 

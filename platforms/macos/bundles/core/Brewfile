@@ -27,6 +27,13 @@ brew "coreutils"                        # GNU core utilities
 # Security & Secrets
 brew "age"                              # Modern encryption
 brew "sops"                             # Secrets management
+brew "gnupg"                            # GPG encryption
+brew "pinentry-mac"                     # macOS pinentry for GPG
+tap "jorgelbg/tap"
+brew "jorgelbg/tap/pinentry-touchid"    # Touch ID for GPG passphrase
+
+# Task Runner
+brew "just"                             # Command runner for justfile
 
 # Development Tools
 brew "neovim"                           # Terminal editor
