@@ -11,17 +11,21 @@ SNAPSHOT_BASE="$DOTFILES_DIR/.state/snapshots"
 echo "Available rollback points:"
 echo ""
 
-TAGS=$(git tag -l "pre-update/*" --sort=-creatordate)
+# Collect tags from all rollback-related prefixes
+TAGS=$(git tag -l "pre-update/*" "pre-bundle-change/*" "pre-change/*" --sort=-creatordate)
 
 if [[ -z "$TAGS" ]]; then
     echo "  No rollback points found."
     echo ""
-    echo "Rollback points are created automatically when you run 'just update'."
+    echo "Rollback points are created automatically when you run 'just update' or modify bundles."
     exit 0
 fi
 
 echo "$TAGS" | while read -r tag; do
-    TIMESTAMP="${tag#pre-update/}"
+    # Extract timestamp (everything after the last /)
+    TIMESTAMP="${tag##*/}"
+    # Extract prefix for display
+    PREFIX="${tag%/*}"
     HASH=$(git rev-parse --short "$tag")
 
     # Format timestamp for display
@@ -39,7 +43,7 @@ echo "$TAGS" | while read -r tag; do
         [[ -f "$SNAPSHOT_DIR/bundles" ]] && INDICATORS+=" [bundles]"
     fi
 
-    echo "  $TIMESTAMP  ($HASH)  $DISPLAY_DATE$INDICATORS"
+    echo "  $TIMESTAMP  ($HASH)  $DISPLAY_DATE  [$PREFIX]$INDICATORS"
 done
 
 echo ""

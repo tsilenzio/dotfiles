@@ -5,30 +5,41 @@
 # - Resolves bundle dependencies
 # - Handles preflight (sudo caching)
 # - Installs Homebrew
-# - Calls each selected bundle's setup.sh
+# - Delegates bundle setup to upgrade.sh
 
 set -e
 
 DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
+# shellcheck disable=SC2034
 BUNDLES_DIR="$PLATFORM_DIR/bundles"
 BUNDLES_FILE="$DOTFILES_DIR/.bundles"
 
-# Load shared library (provides get_bundle_conf, is_bundle_available, resolve_dependencies, sort_by_order)
+# Load shared library
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 ## Parse flags
-BUNDLES=()
+SELECT_BUNDLES=()
+REMOVE_BUNDLES=()
 REVEALED=()
+AUTO_CONFIRM=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --select=*)
-            BUNDLES+=("${1#*=}")
+            SELECT_BUNDLES+=("${1#*=}")
             shift
             ;;
         --select)
-            BUNDLES+=("$2")
+            SELECT_BUNDLES+=("$2")
+            shift 2
+            ;;
+        --remove=*)
+            REMOVE_BUNDLES+=("${1#*=}")
+            shift
+            ;;
+        --remove)
+            REMOVE_BUNDLES+=("$2")
             shift 2
             ;;
         --reveal=*)
@@ -38,6 +49,14 @@ while [[ $# -gt 0 ]]; do
         --reveal)
             REVEALED+=("$2")
             shift 2
+            ;;
+        --yes|-y)
+            AUTO_CONFIRM="yes"
+            shift
+            ;;
+        --no|-n)
+            AUTO_CONFIRM="no"
+            shift
             ;;
         *)
             shift
@@ -54,17 +73,102 @@ fi
 
 echo "Mode: $MODE"
 
-## Bundle selection (if not provided via flags)
-if [[ ${#BUNDLES[@]} -eq 0 ]]; then
-    if [[ "$MODE" == "upgrade" && -f "$BUNDLES_FILE" ]]; then
-        # Upgrade mode - use saved bundles
-        BUNDLES=()
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            [[ -n "$line" ]] && BUNDLES+=("$line")
-        done < "$BUNDLES_FILE"
-        echo "Using saved bundles: ${BUNDLES[*]}"
+## Bundle selection
+BUNDLES=()
+
+if [[ "$MODE" == "upgrade" ]]; then
+    # Load currently installed bundles
+    INSTALLED_BUNDLES=()
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] && INSTALLED_BUNDLES+=("$line")
+    done < "$BUNDLES_FILE"
+
+    # Start with installed bundles
+    BUNDLES=("${INSTALLED_BUNDLES[@]}")
+
+    # Handle --select (additive)
+    for bundle in "${SELECT_BUNDLES[@]}"; do
+        # shellcheck disable=SC2076
+        if [[ ! " ${BUNDLES[*]} " =~ " $bundle " ]]; then
+            BUNDLES+=("$bundle")
+        fi
+    done
+
+    # Handle --remove
+    if [[ ${#REMOVE_BUNDLES[@]} -gt 0 ]]; then
+        FILTERED_BUNDLES=()
+        for bundle in "${BUNDLES[@]}"; do
+            # shellcheck disable=SC2076
+            if [[ ! " ${REMOVE_BUNDLES[*]} " =~ " $bundle " ]]; then
+                FILTERED_BUNDLES+=("$bundle")
+            fi
+        done
+        BUNDLES=("${FILTERED_BUNDLES[@]}")
+    fi
+
+    # If no flags provided, show interactive menu
+    if [[ ${#SELECT_BUNDLES[@]} -eq 0 && ${#REMOVE_BUNDLES[@]} -eq 0 ]]; then
+        echo ""
+        echo "Installed bundles:"
+        for bundle in "${INSTALLED_BUNDLES[@]}"; do
+            echo "  ✓ $bundle"
+        done
+
+        # Show available bundles (not yet installed)
+        echo ""
+        echo "Available to add:"
+
+        declare -a AVAILABLE_IDS=()
+        MENU_NUM=0
+
+        while IFS='|' read -r id name desc _order requires; do
+            [[ -z "$id" ]] && continue
+
+            # Skip if already installed
+            # shellcheck disable=SC2076
+            if [[ " ${INSTALLED_BUNDLES[*]} " =~ " $id " ]]; then
+                continue
+            fi
+
+            MENU_NUM=$((MENU_NUM + 1))
+            AVAILABLE_IDS+=("$id")
+
+            if [[ -n "$requires" ]]; then
+                echo "  $MENU_NUM) $name - $desc [requires: $requires]"
+            else
+                echo "  $MENU_NUM) $name - $desc"
+            fi
+        done < <(discover_bundles)
+
+        if [[ ${#AVAILABLE_IDS[@]} -eq 0 ]]; then
+            echo "  (all available bundles are installed)"
+        fi
+
+        echo ""
+        echo "Select bundles to add (comma-separated, or Enter to skip):"
+        echo -n "Selection: "
+        read -r SELECTION < /dev/tty
+        echo "$SELECTION"  # Echo to log
+
+        # Add newly selected bundles
+        if [[ -n "$SELECTION" ]]; then
+            SELECTION="${SELECTION//,/ }"
+            for choice in $SELECTION; do
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#AVAILABLE_IDS[@]} ]]; then
+                    idx=$((choice - 1))
+                    selected_id="${AVAILABLE_IDS[$idx]}"
+                    BUNDLES+=("$selected_id")
+                fi
+            done
+        fi
+    fi
+else
+    # Install mode
+    if [[ ${#SELECT_BUNDLES[@]} -gt 0 ]]; then
+        # Use --select flags directly
+        BUNDLES=("${SELECT_BUNDLES[@]}")
     else
-        # Install mode - prompt for selection
+        # Prompt for selection
         echo ""
         echo "Available bundles:"
         echo ""
@@ -78,7 +182,6 @@ if [[ ${#BUNDLES[@]} -eq 0 ]]; then
             MENU_NUM=$((MENU_NUM + 1))
             BUNDLE_IDS+=("$id")
 
-            # Show dependencies if any
             if [[ -n "$requires" ]]; then
                 echo "  $MENU_NUM) $name - $desc [requires: $requires]"
             else
@@ -106,12 +209,37 @@ if [[ ${#BUNDLES[@]} -eq 0 ]]; then
                 fi
             done
         fi
+    fi
 
-        # If nothing selected, show error
-        if [[ ${#BUNDLES[@]} -eq 0 ]]; then
-            echo "Error: No bundles selected"
-            exit 1
-        fi
+    if [[ ${#BUNDLES[@]} -eq 0 ]]; then
+        echo "Error: No bundles selected"
+        exit 1
+    fi
+fi
+
+## Prompt for preferences/dock in upgrade mode
+RUN_PREFERENCES=true
+RUN_DOCK=true
+
+if [[ "$MODE" == "upgrade" ]]; then
+    if [[ "$AUTO_CONFIRM" == "yes" ]]; then
+        RUN_PREFERENCES=true
+        RUN_DOCK=true
+    elif [[ "$AUTO_CONFIRM" == "no" ]]; then
+        RUN_PREFERENCES=false
+        RUN_DOCK=false
+    else
+        echo ""
+        echo "Note: Re-running these scripts will reset settings to dotfiles defaults."
+        echo "      Dock configuration will replace any manually added apps/icons."
+        echo ""
+        echo -n "Re-run system preferences? [y/N]: "
+        read -r PREFS_ANSWER < /dev/tty
+        [[ "$PREFS_ANSWER" =~ ^[Yy]$ ]] && RUN_PREFERENCES=true || RUN_PREFERENCES=false
+
+        echo -n "Re-run dock configuration? [y/N]: "
+        read -r DOCK_ANSWER < /dev/tty
+        [[ "$DOCK_ANSWER" =~ ^[Yy]$ ]] && RUN_DOCK=true || RUN_DOCK=false
     fi
 fi
 
@@ -126,6 +254,15 @@ while IFS= read -r line; do
 done < <(echo "$RESOLVED_LIST" | sort_by_order)
 
 echo "Installation order: ${RESOLVED_BUNDLES[*]}"
+
+# Create snapshot before modifying bundles (upgrade mode only)
+if [[ "$MODE" == "upgrade" ]]; then
+    echo ""
+    echo "Creating rollback snapshot..."
+    SNAPSHOT_TS=$(create_snapshot "pre-bundle-change")
+    echo "  ✓ Snapshot created: $SNAPSHOT_TS"
+    echo "  To rollback: just rollback $SNAPSHOT_TS"
+fi
 
 # Save resolved bundles for future upgrades
 printf '%s\n' "${RESOLVED_BUNDLES[@]}" > "$BUNDLES_FILE"
@@ -153,14 +290,11 @@ if [[ -z "$BREW_BIN" ]]; then
     echo "Installing Homebrew..."
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-    # Add Homebrew to PATH
     if [[ -f "/opt/homebrew/bin/brew" ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
     elif [[ -f "/usr/local/bin/brew" ]]; then
         eval "$(/usr/local/bin/brew shellenv)"
     fi
-else
-    echo "Homebrew already installed: $BREW_BIN"
 fi
 
 # Use local cache if available
@@ -170,41 +304,8 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
-## Run each bundle's setup.sh
-echo ""
-echo "════════════════════════════════════════════════════════════"
-echo "  Running bundle setup scripts"
-echo "════════════════════════════════════════════════════════════"
-
-for bundle in "${RESOLVED_BUNDLES[@]}"; do
-    BUNDLE_DIR="$BUNDLES_DIR/$bundle"
-    SETUP_SCRIPT="$BUNDLE_DIR/setup.sh"
-
-    if [[ ! -f "$SETUP_SCRIPT" ]]; then
-        echo ""
-        echo "Warning: No setup.sh found for bundle '$bundle', skipping..."
-        continue
-    fi
-
-    echo ""
-    echo "────────────────────────────────────────────────────────────"
-    echo "  Bundle: $bundle ($MODE)"
-    echo "────────────────────────────────────────────────────────────"
-
-    # Export useful variables for the bundle script
-    export DOTFILES_DIR
-    export BUNDLE_DIR
-    export BUNDLE_NAME="$bundle"
-    export DOTFILES_MODE="$MODE"
-
-    # Run the bundle's setup script with mode
-    "$SETUP_SCRIPT" "$MODE"
-done
-
-## Setup loaded/ symlinks for active bundles
-echo ""
-echo "Setting up loaded/ symlinks..."
-setup_loaded_symlinks "${RESOLVED_BUNDLES[@]}"
+## Run bundle setup via upgrade.sh
+"$DOTFILES_DIR/scripts/upgrade.sh"
 
 ## Post-install system configuration
 echo ""
@@ -212,17 +313,15 @@ echo "════════════════════════�
 echo "  System configuration"
 echo "════════════════════════════════════════════════════════════"
 
-# Enable Touch ID for sudo
+# Enable Touch ID for sudo (skip silently if already configured)
 SUDO_LOCAL="/etc/pam.d/sudo_local"
 if [[ ! -f "$SUDO_LOCAL" ]]; then
     echo "Enabling Touch ID for sudo..."
     echo "auth       sufficient     pam_tid.so" | sudo tee "$SUDO_LOCAL" > /dev/null
     echo "  ✓ Touch ID enabled"
-else
-    echo "  ✓ Touch ID already configured"
 fi
 
-# Change default shell to Homebrew's zsh
+# Change default shell to Homebrew's zsh (skip silently if already done)
 HOMEBREW_ZSH="$(brew --prefix)/bin/zsh"
 if [[ -x "$HOMEBREW_ZSH" ]]; then
     if ! grep -q "$HOMEBREW_ZSH" /etc/shells; then
@@ -233,20 +332,18 @@ if [[ -x "$HOMEBREW_ZSH" ]]; then
     if [[ "$SHELL" != "$HOMEBREW_ZSH" ]]; then
         echo "Changing default shell to Homebrew zsh..."
         sudo chsh -s "$HOMEBREW_ZSH" "$USER"
-    else
-        echo "  ✓ Shell already set to Homebrew zsh"
     fi
 fi
 
 # Run macOS preferences
-if [[ -f "$PLATFORM_DIR/preferences.sh" ]]; then
+if [[ "$RUN_PREFERENCES" == "true" && -f "$PLATFORM_DIR/preferences.sh" ]]; then
     echo ""
     echo "Applying macOS preferences..."
     "$PLATFORM_DIR/preferences.sh"
 fi
 
 # Run dock configuration
-if [[ -f "$PLATFORM_DIR/dock.sh" ]]; then
+if [[ "$RUN_DOCK" == "true" && -f "$PLATFORM_DIR/dock.sh" ]]; then
     echo ""
     "$PLATFORM_DIR/dock.sh"
 fi

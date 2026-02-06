@@ -13,6 +13,9 @@ LOG_DIR="$DOTFILES_DIR/.state/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
 
+# Save original file descriptors (needed to restore before final exec)
+exec 3>&1 4>&2
+
 # Redirect stdout/stderr to tee (logs to file + console)
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -62,6 +65,9 @@ echo "  Installation complete!"
 echo "  Log saved to: $LOG_FILE"
 echo "════════════════════════════════════════════════════════════"
 echo ""
+
+# Restore original file descriptors (so new shell has clean stdout/stderr)
+exec 1>&3 2>&4 3>&- 4>&-
 
 # Start a fresh login shell
 if [[ "$OS" == "macos" ]]; then

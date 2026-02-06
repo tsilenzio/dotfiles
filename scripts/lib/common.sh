@@ -73,6 +73,7 @@ link_base_configs() {
 
     [[ -f "$config_dir/zsh/zshrc" ]] && safe_link "$config_dir/zsh/zshrc" "$HOME/.zshrc"
     [[ -f "$config_dir/zsh/zshenv" ]] && safe_link "$config_dir/zsh/zshenv" "$HOME/.zshenv"
+    [[ -f "$config_dir/zsh/zprofile" ]] && safe_link "$config_dir/zsh/zprofile" "$HOME/.zprofile"
     [[ -f "$config_dir/starship/starship.toml" ]] && safe_link "$config_dir/starship/starship.toml" "$HOME/.config/starship.toml"
     [[ -f "$config_dir/git/gitconfig" ]] && safe_link "$config_dir/git/gitconfig" "$HOME/.gitconfig"
     [[ -f "$config_dir/git/gitignore" ]] && safe_link "$config_dir/git/gitignore" "$HOME/.gitignore"
@@ -276,6 +277,52 @@ setup_loaded_symlinks() {
     done
 
     echo "  ✓ loaded/ symlinks created for: ${bundles[*]}"
+}
+
+## Snapshots
+
+# Create a rollback snapshot (git tag + state snapshot)
+# Usage: create_snapshot [tag_prefix]
+# Returns: timestamp on stdout
+create_snapshot() {
+    local prefix="${1:-pre-change}"
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    local tag_name="$prefix/$timestamp"
+    local snapshot_dir="$DOTFILES_DIR/.state/snapshots/$timestamp"
+    local git_hash
+
+    # Only create git tag if in a git repo
+    if [[ -d "$DOTFILES_DIR/.git" ]]; then
+        git_hash=$(git -C "$DOTFILES_DIR" rev-parse HEAD)
+        git -C "$DOTFILES_DIR" tag --no-sign "$tag_name" 2>/dev/null || true
+    else
+        git_hash="none"
+    fi
+
+    mkdir -p "$snapshot_dir"
+
+    # Snapshot current brew state
+    if command -v brew &>/dev/null; then
+        brew bundle dump --file="$snapshot_dir/Brewfile" --force 2>/dev/null || true
+    fi
+
+    # Snapshot current bundles
+    if [[ -f "$DOTFILES_DIR/.bundles" ]]; then
+        cp "$DOTFILES_DIR/.bundles" "$snapshot_dir/bundles"
+    fi
+
+    # Create metadata
+    cat > "$snapshot_dir/metadata.json" << EOF
+{
+  "timestamp": "$timestamp",
+  "git_hash": "$git_hash",
+  "git_tag": "$tag_name",
+  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
+    echo "$timestamp"
 }
 
 ## Logging (colors disabled if not a terminal)

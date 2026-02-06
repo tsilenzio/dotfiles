@@ -90,20 +90,11 @@ defaults write com.apple.controlcenter WiFi -int 18
 # Show Bluetooth in menu bar
 defaults write com.apple.controlcenter Bluetooth -int 18
 
-## Dock and Desktop
-log "Configuring Dock and Desktop..."
+## Desktop and Spaces
+log "Configuring Desktop and Spaces..."
 
 # Double-click window title bar to fill (Maximize in Tahoe)
 defaults write NSGlobalDomain AppleActionOnDoubleClick -string "Maximize"
-
-# Minimize windows into application icon
-defaults write com.apple.dock minimize-to-application -bool true
-
-# Auto-hide dock
-defaults write com.apple.dock autohide -bool true
-
-# Don't show recent apps in Dock
-defaults write com.apple.dock show-recents -bool false
 
 # Don't automatically rearrange Spaces
 defaults write com.apple.dock mru-spaces -bool false

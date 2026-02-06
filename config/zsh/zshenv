@@ -5,7 +5,8 @@ else
     export DOTFILES_DIR="$HOME/.dotfiles"
 fi
 
-# Setup homebrew & mise
+# Setup homebrew & mise for non-interactive, non-login shells
+# Examples: scripts (./script.sh), command substitution ($(cmd)), piped commands
 if [[ ! -o interactive ]] && [[ ! -o login ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
     eval "$(mise activate zsh --shims)"

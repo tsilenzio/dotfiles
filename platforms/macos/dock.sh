@@ -5,6 +5,9 @@
 
 set -e
 
+VERBOSE=false
+[[ "$1" == "--verbose" || "$1" == "-v" ]] && VERBOSE=true
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -12,6 +15,9 @@ NC='\033[0m' # No Color
 
 log() { echo -e "${GREEN}[DOCK] $1${NC}"; }
 warn() { echo -e "${YELLOW}[DOCK] WARNING: $1${NC}"; }
+
+# Track added apps for final summary
+ADDED_APPS=()
 
 # Check if dockutil is installed
 if ! command -v dockutil &> /dev/null; then
@@ -36,8 +42,9 @@ add_app() {
 
     if [[ -d "$app_path" ]]; then
         dockutil --add "$app_path" --no-restart
+        ADDED_APPS+=("$app_name")
         echo "  ✓ Added: $app_name"
-    else
+    elif [[ "$VERBOSE" == "true" ]]; then
         warn "App not found: $app_name (skipping)"
     fi
 }
@@ -141,7 +148,21 @@ killall Dock
 
 log "✅ Dock configuration complete!"
 echo ""
-echo "Your Dock now shows (left to right):"
-echo "  Finder | Vivaldi | Slack | Outlook | WezTerm | Cursor | VS Code |"
-echo "  Windsurf | Antigravity | Docker | Claude | ChatGPT |"
-echo "  Obsidian | Notes | Spotify | Kindle"
+echo "Dock apps (left to right):"
+
+# Print apps in rows of 6
+row=""
+count=0
+for app in "${ADDED_APPS[@]}"; do
+    if [[ $count -gt 0 ]]; then
+        row="$row | "
+    fi
+    row="$row$app"
+    count=$((count + 1))
+    if [[ $count -eq 6 ]]; then
+        echo "  $row"
+        row=""
+        count=0
+    fi
+done
+[[ -n "$row" ]] && echo "  $row"

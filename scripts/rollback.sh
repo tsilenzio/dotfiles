@@ -31,27 +31,31 @@ if [[ -z "$TARGET" ]]; then
     echo ""
 
     TAGS=()
+    # Collect tags from all rollback-related prefixes
     while IFS= read -r line; do
         [[ -n "$line" ]] && TAGS+=("$line")
-    done < <(git tag -l "pre-update/*" --sort=-creatordate)
+    done < <(git tag -l "pre-update/*" "pre-bundle-change/*" "pre-change/*" --sort=-creatordate)
 
     if [[ ${#TAGS[@]} -eq 0 ]]; then
         echo "No rollback points found."
-        echo "Rollback points are created automatically when you run 'just update'."
+        echo "Rollback points are created automatically when you run 'just update' or modify bundles."
         exit 1
     fi
 
     for i in "${!TAGS[@]}"; do
         tag="${TAGS[$i]}"
-        TIMESTAMP="${tag#pre-update/}"
+        # Extract timestamp (everything after the last /)
+        TIMESTAMP="${tag##*/}"
         HASH=$(git rev-parse --short "$tag")
         INDICATORS=""
+        # Extract prefix for display
+        PREFIX="${tag%/*}"
         SNAPSHOT_DIR="$SNAPSHOT_BASE/$TIMESTAMP"
         if [[ -d "$SNAPSHOT_DIR" ]]; then
             [[ -f "$SNAPSHOT_DIR/Brewfile" ]] && INDICATORS+=" [brew]"
             [[ -f "$SNAPSHOT_DIR/bundles" ]] && INDICATORS+=" [bundles]"
         fi
-        echo "  $((i+1))) $TIMESTAMP ($HASH)$INDICATORS"
+        echo "  $((i+1))) $TIMESTAMP ($HASH) [$PREFIX]$INDICATORS"
     done
 
     echo ""
@@ -62,14 +66,25 @@ if [[ -z "$TARGET" ]]; then
         exit 1
     fi
 
-    TARGET="${TAGS[$((SELECTION-1))]#pre-update/}"
+    # Store the full tag name for later use
+    TAG_NAME="${TAGS[$((SELECTION-1))]}"
+    TARGET="${TAG_NAME##*/}"
 fi
 
-TAG_NAME="pre-update/$TARGET"
+# If target was provided directly, try to find the matching tag
+if [[ -z "${TAG_NAME:-}" ]]; then
+    # Try each prefix to find the tag
+    for prefix in pre-update pre-bundle-change pre-change; do
+        if git rev-parse "$prefix/$TARGET" &>/dev/null; then
+            TAG_NAME="$prefix/$TARGET"
+            break
+        fi
+    done
+fi
 SNAPSHOT_DIR="$SNAPSHOT_BASE/$TARGET"
 
 # Verify tag exists
-if ! git rev-parse "$TAG_NAME" &>/dev/null; then
+if [[ -z "${TAG_NAME:-}" ]] || ! git rev-parse "$TAG_NAME" &>/dev/null; then
     echo "Error: Rollback point '$TARGET' not found."
     echo "Run 'just history' to see available points."
     exit 1
@@ -79,6 +94,23 @@ CURRENT_HASH=$(git rev-parse --short HEAD)
 TARGET_HASH=$(git rev-parse --short "$TAG_NAME")
 
 echo "Rolling back: $CURRENT_HASH -> $TARGET_HASH"
+
+# If --with-brew, check upfront if sudo will be needed and cache credentials
+if [[ "$WITH_BREW" == "true" && "$DRY_RUN" != "true" ]]; then
+    if [[ -f "$SNAPSHOT_DIR/Brewfile" ]]; then
+        # Check if there are packages to remove
+        CLEANUP_LIST=$(brew bundle cleanup --file="$SNAPSHOT_DIR/Brewfile" 2>/dev/null || true)
+        if [[ -n "$CLEANUP_LIST" ]]; then
+            echo ""
+            echo "Brew rollback will remove packages. Requesting sudo access upfront..."
+            sudo -v
+            # Keep sudo alive in the background
+            while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done 2>/dev/null &
+            SUDO_KEEPALIVE_PID=$!
+            trap 'kill $SUDO_KEEPALIVE_PID 2>/dev/null' EXIT
+        fi
+    fi
+fi
 
 # Dry run mode
 if [[ "$DRY_RUN" == "true" ]]; then
@@ -105,7 +137,7 @@ fi
 
 # Create a safety tag for current state before rollback
 SAFETY_TAG="pre-rollback/$(date +%Y%m%d-%H%M%S)"
-git tag "$SAFETY_TAG"
+git tag --no-sign "$SAFETY_TAG"
 echo "Safety tag created: $SAFETY_TAG"
 
 # Reset git
@@ -153,6 +185,7 @@ if [[ "$WITH_BREW" == "true" ]]; then
 
             echo ""
             echo "=== Brew rollback complete ==="
+            PACKAGES_CHANGED=true
         else
             echo "Brew rollback skipped by user."
         fi
@@ -162,3 +195,12 @@ fi
 echo ""
 echo "Rollback complete!"
 echo "Safety tag available: $SAFETY_TAG (in case you need to undo this rollback)"
+
+if [[ "${PACKAGES_CHANGED:-false}" == "true" ]]; then
+    echo ""
+    echo "Note: Packages were modified. Shell hooks may reference uninstalled programs."
+    read -r -p "Restart shell now? [Y/n]: " RESTART_SHELL
+    if [[ ! "$RESTART_SHELL" =~ ^[Nn]$ ]]; then
+        exec "$SHELL"
+    fi
+fi

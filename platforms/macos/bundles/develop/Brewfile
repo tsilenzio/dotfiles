@@ -1,14 +1,10 @@
 # Taps
-tap "jorgelbg/tap"
 tap "sijanc147/formulas"
 
 # Git & Version Control
-brew "gnupg"                            # GPG signing
 brew "gh"                               # GitHub CLI
 brew "git-delta"                        # Syntax-highlighting diff viewer
 brew "lazygit"                          # TUI for git operations
-brew "pinentry-mac"                     # GPG GUI pinentry
-brew "jorgelbg/tap/pinentry-touchid"   # Touch ID for GPG
 brew "bfg"                              # Git repo cleaner
 # brew "tig"                            # Text-mode git interface (evaluate)
 # brew "git-extras"                     # Git utilities collection (evaluate)
@@ -50,7 +46,6 @@ brew "watchman"                         # File watcher (Meta)
 brew "mise"                             # Version manager
 brew "direnv"                           # Auto-load environment variables
 brew "shellcheck"                       # Shell script linter
-brew "just"                             # Command runner
 brew "docker"                           # Container CLI
 brew "lima"                             # Linux VMs for macOS
 brew "hyperfine"                        # Command benchmarking
