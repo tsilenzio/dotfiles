@@ -9,6 +9,9 @@
 
 set -e
 
+# Prevent system sleep during installation (display, idle, disk, system)
+caffeinate -dims -w $$ &
+
 DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 PLATFORM_DIR="$DOTFILES_DIR/platforms/macos"
 # shellcheck disable=SC2034

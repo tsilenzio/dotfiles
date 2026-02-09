@@ -130,7 +130,7 @@ is_dirty() {
     local dir="$1"
     [[ -d "$dir/.git" ]] || return 1
     is_git_available || return 1  # Don't trigger CLT dialog
-    cd "$dir" && [[ -n "$(git status --porcelain 2>/dev/null)" ]]
+    [[ -n "$(git -C "$dir" status --porcelain 2>/dev/null)" ]]
 }
 
 # Describe state files in a directory (for user info)
@@ -201,7 +201,7 @@ prompt_yes_no() {
 
     read -r response < /dev/tty || response=""
 
-    case "${response,,}" in
+    case "$(echo "$response" | tr '[:upper:]' '[:lower:]')" in
         y|yes) return 0 ;;
         n|no) return 1 ;;
         "")
@@ -237,7 +237,7 @@ init_git_repo() {
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║                    Dotfiles Bootstrap                      ║"
+echo "║                     Dotfiles Bootstrap                     ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Target: $TARGET_DIR"

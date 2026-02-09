@@ -93,10 +93,10 @@ bootstrap_mode() {
     # Decrypt the age key using the password
     # age -d reads passphrase from /dev/tty, so we use expect
     log "Decrypting age key..."
-    expect << EXPECT_EOF || error "Failed to decrypt age key. Wrong password?"
+    EXPECT_PASSWORD="$password" expect << EXPECT_EOF || error "Failed to decrypt age key. Wrong password?"
 spawn age -d -o "$AGE_KEY_FILE" "$AGE_KEY_ENCRYPTED"
 expect "Enter passphrase:"
-send "$password\r"
+send "\$env(EXPECT_PASSWORD)\r"
 expect eof
 EXPECT_EOF
 
@@ -140,12 +140,12 @@ fresh_setup_mode() {
     # Encrypt the age key with password for syncing
     log "Encrypting age key for safe storage in repo..."
     # age -p reads from /dev/tty, so we use expect to automate passphrase entry
-    expect << EXPECT_EOF
+    EXPECT_PASSWORD="$password" expect << EXPECT_EOF
 spawn age -p -o "$AGE_KEY_ENCRYPTED" "$AGE_KEY_FILE"
 expect "Enter passphrase"
-send "$password\r"
+send "\$env(EXPECT_PASSWORD)\r"
 expect "Confirm passphrase"
-send "$password\r"
+send "\$env(EXPECT_PASSWORD)\r"
 expect eof
 EXPECT_EOF
 
@@ -202,12 +202,12 @@ main() {
                 setup_keychain
                 local password
                 password=$(get_password)
-                expect << EXPECT_EOF
+                EXPECT_PASSWORD="$password" expect << EXPECT_EOF
 spawn age -p -o "$AGE_KEY_ENCRYPTED" "$AGE_KEY_FILE"
 expect "Enter passphrase"
-send "$password\r"
+send "\$env(EXPECT_PASSWORD)\r"
 expect "Confirm passphrase"
-send "$password\r"
+send "\$env(EXPECT_PASSWORD)\r"
 expect eof
 EXPECT_EOF
                 log "Encrypted key saved to: $AGE_KEY_ENCRYPTED"

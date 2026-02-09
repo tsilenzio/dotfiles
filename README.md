@@ -149,6 +149,6 @@ The bundle will automatically appear in the selection menu.
 
 ## Requirements
 
-- macOS 15+ (Sequoia)
+- macOS 26+ (Tahoe)
 - Internet connection (for Homebrew)
 
