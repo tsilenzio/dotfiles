@@ -32,7 +32,7 @@ TAG_NAME="pre-update/$TIMESTAMP"
 SNAPSHOT_DIR="$DOTFILES_DIR/.state/snapshots/$TIMESTAMP"
 
 echo "Creating rollback point: $TAG_NAME"
-git tag "$TAG_NAME"
+git tag --no-sign "$TAG_NAME"
 
 # Create snapshot directory
 mkdir -p "$SNAPSHOT_DIR"

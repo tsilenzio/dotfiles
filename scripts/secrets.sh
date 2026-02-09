@@ -160,7 +160,7 @@ cleanup_gpg_loopback() {
     if [[ "$GPG_LOOPBACK_ADDED" == true ]]; then
         if [[ -L "$GPG_LOOPBACK_CONF" ]]; then
             local real_conf
-            real_conf=$(readlink -f "$GPG_LOOPBACK_CONF")
+            real_conf=$(readlink "$GPG_LOOPBACK_CONF")
             sed -i '' '/^allow-loopback-pinentry$/d' "$real_conf" 2>/dev/null || true
         elif [[ -f "$GPG_LOOPBACK_CONF" ]]; then
             sed -i '' '/^allow-loopback-pinentry$/d' "$GPG_LOOPBACK_CONF" 2>/dev/null || true
@@ -240,11 +240,11 @@ unlock_key() {
     TEMP_KEY_FILE=$(mktemp)
     chmod 600 "$TEMP_KEY_FILE"
 
-    if ! expect -c "
+    if ! EXPECT_PASSWORD="$password" expect -c "
         log_user 0
         spawn age -d -o \"$TEMP_KEY_FILE\" \"$AGE_KEY_ENCRYPTED\"
         expect \"Enter passphrase:\"
-        send \"$password\r\"
+        send \"\$env(EXPECT_PASSWORD)\r\"
         expect eof
         catch wait result
         exit [lindex \$result 3]
@@ -349,68 +349,6 @@ get_password() {
 
 cmd_init() {
     exec "$DOTFILES_DIR/scripts/secrets-init.sh"
-}
-
-# Internal: Show cloud backup status (called from status command)
-_cloud_status() {
-    local dir="$1"
-
-    # Show available cloud roots
-    echo "Available cloud storage:"
-    local roots found_any=false
-    roots=$(get_cloud_roots)
-    while IFS= read -r root; do
-        [[ -z "$root" ]] && continue
-        found_any=true
-        local name
-        case "$root" in
-            *Dropbox*) name="Dropbox" ;;
-            *GoogleDrive*|*"Google Drive"*) name="Google Drive" ;;
-            *OneDrive*) name="OneDrive" ;;
-            *"Mobile Documents"*) name="iCloud Drive" ;;
-            *) name="Unknown" ;;
-        esac
-        local secrets_dir="$root/$CLOUD_SECRETS_SUBDIR"
-        if [[ -d "$secrets_dir" ]]; then
-            echo "  ✓ $name: $root"
-            echo "    └── $CLOUD_SECRETS_SUBDIR/ (backup exists)"
-        else
-            echo "  · $name: $root"
-        fi
-    done <<< "$roots"
-
-    if [[ "$found_any" == false ]]; then
-        echo "  (none found)"
-    fi
-
-    echo ""
-
-    # Show current backup location
-    local secrets_dir
-    if [[ -n "$dir" ]]; then
-        secrets_dir="$dir"
-    else
-        secrets_dir=$(find_cloud_secrets_dir) || true
-    fi
-
-    if [[ -n "$secrets_dir" && -d "$secrets_dir" ]]; then
-        echo "Active backup location: $secrets_dir"
-        echo ""
-        echo "Backed up secrets:"
-        if [[ -f "$secrets_dir/age-passphrase.age" ]]; then
-            echo "  ✓ age-passphrase.age"
-        else
-            echo "  ✗ age-passphrase.age (missing)"
-        fi
-        if [[ -f "$secrets_dir/gpg-passphrase.age" ]]; then
-            echo "  ✓ gpg-passphrase.age"
-        else
-            echo "  · gpg-passphrase.age (not backed up)"
-        fi
-    else
-        echo "No cloud backup configured."
-        echo "Run: just secrets backup --dir <cloud-path>"
-    fi
 }
 
 # Internal: Backup passphrases to cloud storage
@@ -934,18 +872,21 @@ cmd_backup() {
 
             # Export the key
             echo "  Exporting key..."
+            local tmp_key
+            tmp_key=$(mktemp)
+            chmod 600 "$tmp_key"
             echo "$KEY_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
-                --export-secret-keys --armor "$keyid" > "/tmp/gpg-$keyid.asc"
+                --export-secret-keys --armor "$keyid" > "$tmp_key"
 
-            if [[ ! -s "/tmp/gpg-$keyid.asc" ]]; then
+            if [[ ! -s "$tmp_key" ]]; then
                 echo "  ✗ Export failed (wrong passphrase?)"
-                rm -f "/tmp/gpg-$keyid.asc"
+                rm -f "$tmp_key"
                 continue
             fi
 
             # Encrypt and store
-            cmd_encrypt_raw "/tmp/gpg-$keyid.asc" "$SECRETS_DIR/gpg/$keyid.asc.age"
-            rm -P "/tmp/gpg-$keyid.asc"
+            cmd_encrypt_raw "$tmp_key" "$SECRETS_DIR/gpg/$keyid.asc.age"
+            rm -f "$tmp_key"
 
             # Store passphrase in cloud
             _cloud_backup_gpg_passphrase "$keyid" "$KEY_PASSPHRASE" "$dir"
@@ -1102,14 +1043,17 @@ cmd_restore() {
             fi
 
             # Decrypt and import
-            cmd_decrypt_raw "$f" "/tmp/$name"
+            local tmp_key
+            tmp_key=$(mktemp)
+            chmod 600 "$tmp_key"
+            cmd_decrypt_raw "$f" "$tmp_key"
             echo "$KEY_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
-                --import "/tmp/$name" 2>&1 || {
+                --import "$tmp_key" 2>&1 || {
                 echo "  ✗ Import failed (wrong passphrase?)"
-                rm -P "/tmp/$name"
+                rm -f "$tmp_key"
                 continue
             }
-            rm -P "/tmp/$name"
+            rm -f "$tmp_key"
             echo "  ✓ Key $keyid imported"
         done
         echo ""

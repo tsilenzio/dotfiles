@@ -109,21 +109,74 @@ defaults write com.apple.dock wvous-tl-modifier -int 0
 ## Displays
 log "Configuring display resolution..."
 
-# Note: Resolution setting requires displayplacer
-# The 2056x1329 resolution is specific to M3 Max MacBook Pro
-# Install with: brew install displayplacer
-
 if command -v displayplacer &> /dev/null; then
-    log "Setting resolution with displayplacer..."
-    # Get current display ID and set resolution
-    # Note: This may fail if resolution isn't available on your display
-    if ! displayplacer "id:$(displayplacer list | grep 'Persistent screen id' | awk '{print $4}') res:2056x1329 scaling:on" 2>&1; then
-        warn "displayplacer failed to set resolution (resolution may not be available)"
-        warn "Run 'displayplacer list' to see available resolutions for your display"
+    # Find the built-in display and set it to the highest HiDPI resolution
+    DP_OUTPUT="$(displayplacer list 2>/dev/null)"
+
+    # Find built-in display ID (Type line follows Persistent screen id line)
+    BUILTIN_ID=""
+    CURRENT_ID=""
+    while IFS= read -r line; do
+        case "$line" in
+            *"Persistent screen id:"*)
+                CURRENT_ID="$(echo "$line" | awk '{print $NF}')"
+                ;;
+            *"built in screen"*)
+                BUILTIN_ID="$CURRENT_ID"
+                break
+                ;;
+        esac
+    done <<< "$DP_OUTPUT"
+
+    if [[ -z "$BUILTIN_ID" ]]; then
+        warn "Could not find built-in display via displayplacer"
+    else
+        # Parse modes for the built-in display, find highest HiDPI (scaling:on) resolution
+        BEST_RES=""
+        BEST_HZ=0
+        BEST_AREA=0
+        IN_BUILTIN=false
+
+        while IFS= read -r line; do
+            case "$line" in
+                *"Persistent screen id: $BUILTIN_ID"*)
+                    IN_BUILTIN=true
+                    ;;
+                *"Persistent screen id:"*)
+                    # Hit a different display section - stop
+                    if $IN_BUILTIN; then break; fi
+                    ;;
+                *"scaling:on"*)
+                    if $IN_BUILTIN; then
+                        RES="$(echo "$line" | grep -o 'res:[^ ]*' | cut -d: -f2)"
+                        HZ="$(echo "$line" | grep -o 'hz:[^ ]*' | cut -d: -f2)"
+                        W="$(echo "$RES" | cut -dx -f1)"
+                        H="$(echo "$RES" | cut -dx -f2)"
+                        AREA=$((W * H))
+
+                        if [[ $AREA -gt $BEST_AREA ]] || { [[ $AREA -eq $BEST_AREA ]] && [[ $HZ -gt $BEST_HZ ]]; }; then
+                            BEST_RES="$RES"
+                            BEST_HZ="$HZ"
+                            BEST_AREA=$AREA
+                        fi
+                    fi
+                    ;;
+            esac
+        done <<< "$DP_OUTPUT"
+
+        if [[ -n "$BEST_RES" ]]; then
+            log "Setting built-in display to ${BEST_RES} @ ${BEST_HZ}Hz (HiDPI)"
+            if ! displayplacer "id:$BUILTIN_ID res:$BEST_RES hz:$BEST_HZ color_depth:8 scaling:on" 2>&1; then
+                warn "displayplacer failed to set resolution"
+                warn "Run 'displayplacer list' to see available resolutions"
+            fi
+        else
+            warn "No HiDPI resolutions found for built-in display"
+        fi
     fi
 else
     warn "displayplacer not found. Install with: brew install displayplacer"
-    warn "Then manually set resolution to 2056x1329 or run this script again"
+    warn "Then re-run this script to set display resolution"
 fi
 
 ## Wallpaper
@@ -156,8 +209,8 @@ sudo defaults write /Library/Preferences/com.apple.loginwindow PowerOffDisabled 
 log "Configuring privacy and security..."
 
 # Allow apps from App Store and identified developers
-sudo spctl --master-enable
-sudo spctl --global-enable
+sudo spctl --master-enable 2>/dev/null || warn "spctl --master-enable not supported on this macOS version"
+sudo spctl --global-enable 2>/dev/null || warn "spctl --global-enable not supported on this macOS version"
 
 ## Screenshots
 log "Configuring screenshots..."
@@ -325,7 +378,7 @@ echo "  • Battery: High power on adapter, wake for network on adapter only"
 echo "  • Appearance: Dark mode with Liquid Glass design"
 echo "  • Control Center: Battery percentage shown"
 echo "  • Dock: Auto-hide, minimize to app, no recent apps"
-echo "  • Display: Resolution set to 2056x1329"
+echo "  • Display: Resolution set to highest HiDPI"
 echo "  • Wallpaper: Solid black"
 echo "  • Sound: Startup sound disabled"
 echo "  • Lock Screen: Power buttons shown"

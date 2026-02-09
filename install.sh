@@ -69,6 +69,9 @@ echo ""
 # Restore original file descriptors (so new shell has clean stdout/stderr)
 exec 1>&3 2>&4 3>&- 4>&-
 
+# Ensure stdin is the terminal (may be a pipe if run via curl|bash)
+[[ ! -t 0 ]] && [[ -e /dev/tty ]] && exec 0< /dev/tty
+
 # Start a fresh login shell
 if [[ "$OS" == "macos" ]]; then
     USER_SHELL=$(dscl . -read "/Users/$USER" UserShell 2>/dev/null | awk '{print $2}')
