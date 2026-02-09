@@ -324,7 +324,7 @@ if [[ "$IS_CURL" == true ]]; then
         echo "Running upgrade on existing installation..."
         echo "(To update code first, run: just update)"
         echo ""
-        exec "$TARGET_DIR/install.sh" "${PASSTHROUGH_ARGS[@]}"
+        exec "$TARGET_DIR/install.sh" "${PASSTHROUGH_ARGS[@]}" < /dev/tty
     fi
 
     # Scenario 7 & 8: Curl, fresh install (target empty or no state)
@@ -342,18 +342,18 @@ if [[ "$IS_CURL" == true ]]; then
 
     if is_git_available; then
         echo "Cloning dotfiles from GitHub..."
-        git clone "$REPO_URL" "$TARGET_DIR"
+        git clone "$REPO_URL" "$TARGET_DIR" < /dev/null
     else
         echo "Downloading dotfiles from GitHub (git not available)..."
         mkdir -p "$TARGET_DIR"
-        curl -fsSL "$TARBALL_URL" | tar -xz -C "$TARGET_DIR" --strip-components=1
+        curl -fsSL "$TARBALL_URL" < /dev/null | tar -xz -C "$TARGET_DIR" --strip-components=1
         echo ""
         echo "Note: Installed without git (no .git directory)"
         echo "      Updates and rollbacks will not be available."
         echo "      After installation, consider re-installing with git."
     fi
 
-    exec "$TARGET_DIR/install.sh" "${PASSTHROUGH_ARGS[@]}"
+    exec "$TARGET_DIR/install.sh" "${PASSTHROUGH_ARGS[@]}" < /dev/tty
 fi
 
 ## Local scenarios (source != target)
