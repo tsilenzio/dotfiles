@@ -99,6 +99,9 @@ defaults write NSGlobalDomain AppleActionOnDoubleClick -string "Maximize"
 # Don't automatically rearrange Spaces
 defaults write com.apple.dock mru-spaces -bool false
 
+# Click wallpaper to show desktop: Only in Stage Manager
+defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
+
 # Group windows by application (Expose)
 defaults write com.apple.dock expose-group-apps -bool true
 

@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
-# Upgrade: Re-run bundle setup scripts in upgrade mode
+# Upgrade: Re-run bundle setup scripts
 # Safe to run repeatedly
 #
 # Usage: ./scripts/upgrade.sh [--select <name>...]
+# Environment: DOTFILES_MODE - "install" or "upgrade" (default: upgrade)
 
 set -e
 
 DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 export DOTFILES_DIR
+
+DOTFILES_MODE="${DOTFILES_MODE:-upgrade}"
 
 BUNDLES_FILE="$DOTFILES_DIR/.bundles"
 
@@ -110,17 +113,17 @@ for bundle in "${BUNDLES[@]}"; do
 
     echo ""
     echo "────────────────────────────────────────────────────────────"
-    echo "  Bundle: $bundle (upgrade)"
+    echo "  Bundle: $bundle ($DOTFILES_MODE)"
     echo "────────────────────────────────────────────────────────────"
 
     # Export useful variables for the bundle script
     export DOTFILES_DIR
     export BUNDLE_DIR
     export BUNDLE_NAME="$bundle"
-    export DOTFILES_MODE="upgrade"
+    export DOTFILES_MODE
 
-    # Run the bundle's setup script in upgrade mode
-    "$SETUP_SCRIPT" upgrade
+    # Run the bundle's setup script
+    "$SETUP_SCRIPT" "$DOTFILES_MODE"
 done
 
 ## Setup loaded/ symlinks for active bundles
@@ -130,5 +133,9 @@ setup_loaded_symlinks "${BUNDLES[@]}"
 
 echo ""
 echo "════════════════════════════════════════════════════════════"
-echo "  Upgrade complete!"
+if [[ "$DOTFILES_MODE" == "install" ]]; then
+    echo "  Install complete!"
+else
+    echo "  Upgrade complete!"
+fi
 echo "════════════════════════════════════════════════════════════"
