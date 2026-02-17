@@ -3,7 +3,7 @@ font-family = SauceCodePro Nerd Font
 font-size = 14
 
 # Theme
-theme = catppuccin-mocha
+theme = Catppuccin Mocha
 
 # Cursor
 cursor-style = bar

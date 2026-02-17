@@ -261,10 +261,7 @@ echo "Installation order: ${RESOLVED_BUNDLES[*]}"
 # Create snapshot before modifying bundles (upgrade mode only)
 if [[ "$MODE" == "upgrade" ]]; then
     echo ""
-    echo "Creating rollback snapshot..."
-    SNAPSHOT_TS=$(create_snapshot "pre-bundle-change")
-    echo "  ✓ Snapshot created: $SNAPSHOT_TS"
-    echo "  To rollback: just rollback $SNAPSHOT_TS"
+    create_snapshot "pre-bundle-change"
 fi
 
 # Save resolved bundles for future upgrades
@@ -307,8 +304,8 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
-## Run bundle setup via upgrade.sh
-DOTFILES_MODE="$MODE" "$DOTFILES_DIR/scripts/upgrade.sh"
+## Run bundle setup via upgrade.sh (--managed: install.sh handles snapshots and preferences)
+DOTFILES_MODE="$MODE" "$DOTFILES_DIR/scripts/upgrade.sh" --managed
 
 ## Offer secrets restore on first install
 if [[ "$MODE" == "install" ]]; then

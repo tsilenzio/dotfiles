@@ -29,9 +29,15 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 ## Parse flags
 BUNDLES=()
+MANAGED=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --managed)
+            # Called from install.sh — skip snapshot and preferences/dock
+            MANAGED=true
+            shift
+            ;;
         --select=*)
             BUNDLES+=("${1#*=}")
             shift
@@ -89,6 +95,12 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
+## Create snapshot before applying changes (standalone only)
+if [[ "$MANAGED" != true && "$DOTFILES_MODE" == "upgrade" ]]; then
+    echo ""
+    create_snapshot "pre-upgrade"
+fi
+
 ## Run each bundle's setup.sh in upgrade mode
 echo ""
 echo "════════════════════════════════════════════════════════════"
@@ -130,6 +142,37 @@ done
 echo ""
 echo "Setting up loaded/ symlinks..."
 setup_loaded_symlinks "${BUNDLES[@]}"
+
+## Prompt for preferences/dock (standalone upgrade only)
+if [[ "$MANAGED" != true && "$DOTFILES_MODE" == "upgrade" ]]; then
+    PLATFORM_DIR="$DOTFILES_DIR/platforms/$OS"
+
+    if [[ -f "$PLATFORM_DIR/preferences.sh" || -f "$PLATFORM_DIR/dock.sh" ]]; then
+        echo ""
+        echo "Note: Re-running these scripts will reset settings to dotfiles defaults."
+        echo "      Dock configuration will replace any manually added apps/icons."
+        echo ""
+    fi
+
+    if [[ -f "$PLATFORM_DIR/preferences.sh" ]]; then
+        echo -n "Re-run system preferences? [y/N]: "
+        read -r PREFS_ANSWER
+        if [[ "$PREFS_ANSWER" =~ ^[Yy]$ ]]; then
+            echo ""
+            echo "Applying system preferences..."
+            "$PLATFORM_DIR/preferences.sh"
+        fi
+    fi
+
+    if [[ -f "$PLATFORM_DIR/dock.sh" ]]; then
+        echo -n "Re-run dock configuration? [y/N]: "
+        read -r DOCK_ANSWER
+        if [[ "$DOCK_ANSWER" =~ ^[Yy]$ ]]; then
+            echo ""
+            "$PLATFORM_DIR/dock.sh"
+        fi
+    fi
+fi
 
 echo ""
 echo "════════════════════════════════════════════════════════════"

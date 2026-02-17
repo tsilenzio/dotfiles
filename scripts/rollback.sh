@@ -6,10 +6,16 @@
 set -e
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export DOTFILES_DIR
 cd "$DOTFILES_DIR"
+
+# Load shared library
+source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 SNAPSHOT_BASE="$DOTFILES_DIR/.state/snapshots"
 LOG_DIR="$DOTFILES_DIR/.state/logs"
+
+ALL_PREFIXES=("pre-update" "pre-upgrade" "pre-bundle-change" "pre-change" "pre-conversion" "pre-rollback")
 
 # Parse arguments
 TARGET=""
@@ -32,13 +38,17 @@ if [[ -z "$TARGET" ]]; then
 
     TAGS=()
     # Collect tags from all rollback-related prefixes
+    TAG_ARGS=()
+    for prefix in "${ALL_PREFIXES[@]}"; do
+        TAG_ARGS+=("$prefix/*")
+    done
     while IFS= read -r line; do
         [[ -n "$line" ]] && TAGS+=("$line")
-    done < <(git tag -l "pre-update/*" "pre-bundle-change/*" "pre-change/*" --sort=-creatordate)
+    done < <(git tag -l "${TAG_ARGS[@]}" --sort=-creatordate)
 
     if [[ ${#TAGS[@]} -eq 0 ]]; then
         echo "No rollback points found."
-        echo "Rollback points are created automatically when you run 'just update' or modify bundles."
+        echo "Rollback points are created automatically when you run 'just update' or 'just upgrade'."
         exit 1
     fi
 
@@ -73,8 +83,7 @@ fi
 
 # If target was provided directly, try to find the matching tag
 if [[ -z "${TAG_NAME:-}" ]]; then
-    # Try each prefix to find the tag
-    for prefix in pre-update pre-bundle-change pre-change; do
+    for prefix in "${ALL_PREFIXES[@]}"; do
         if git rev-parse "$prefix/$TARGET" &>/dev/null; then
             TAG_NAME="$prefix/$TARGET"
             break
@@ -135,10 +144,17 @@ if [[ "$DRY_RUN" == "true" ]]; then
     exit 0
 fi
 
-# Create a safety tag for current state before rollback
-SAFETY_TAG="pre-rollback/$(date +%Y%m%d-%H%M%S)"
-git tag --no-sign "$SAFETY_TAG"
-echo "Safety tag created: $SAFETY_TAG"
+# Capture uncommitted changes so nothing is lost
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    echo ""
+    echo "Saving uncommitted changes to rollback point..."
+    git add -A
+    git commit -q -m "WIP: uncommitted state before rollback" --no-gpg-sign
+fi
+
+# Create full snapshot before rollback
+echo ""
+create_snapshot "pre-rollback"
 
 # Reset git
 git reset --hard "$TAG_NAME"
@@ -194,7 +210,14 @@ fi
 
 echo ""
 echo "Rollback complete!"
-echo "Safety tag available: $SAFETY_TAG (in case you need to undo this rollback)"
+echo "  To undo: just rollback $SNAPSHOT_TIMESTAMP"
+
+# Offer to re-apply configuration
+echo ""
+read -r -p "Re-apply configuration? (runs 'just upgrade') [y/N]: " RUN_UPGRADE
+if [[ "$RUN_UPGRADE" =~ ^[Yy]$ ]]; then
+    "$DOTFILES_DIR/scripts/upgrade.sh"
+fi
 
 if [[ "${PACKAGES_CHANGED:-false}" == "true" ]]; then
     echo ""

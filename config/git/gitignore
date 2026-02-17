@@ -1,3 +1,20 @@
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+[Dd]esktop.ini
+
+# Linux (KDE)
+.directory
+
+# Editors & IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
 # Local environment overrides
 mise.local.toml
 
@@ -7,6 +24,21 @@ tmp/
 
 # Internal documentation
 .docs/
+
+# AI agent configs (ignored when untracked, no effect when tracked)
+AGENTS.md
+CLAUDE.md
+.cursorrules
+.cursor/
+.windsurfrules
+.windsurf/
+.github/copilot-instructions.md
+GEMINI.md
+JULES.md
+CODEX.md
+.clinerules
+.junie/
+.aiignore
 
 # Private/sensitive files (not for repos)
 .private/
