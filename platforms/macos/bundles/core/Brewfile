@@ -48,6 +48,7 @@ brew "procs"                            # Modern ps alternative
 cask "istat-menus"                      # Menu bar system monitor
 
 # Development Tools & Editors
+cask "ghostty"                          # Fast native terminal
 cask "wezterm"                          # GPU-accelerated terminal
 cask "hammerspoon"                      # macOS automation
 

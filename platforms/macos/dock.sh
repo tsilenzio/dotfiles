@@ -76,7 +76,7 @@ add_app "Slack"
 add_app "Microsoft Outlook"
 
 # Terminal
-add_app "WezTerm"
+add_app "Ghostty"
 
 # Development
 add_app "Cursor"
