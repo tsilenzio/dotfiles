@@ -6,7 +6,11 @@
 set -e
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export DOTFILES_DIR
 cd "$DOTFILES_DIR"
+
+# Load shared library
+source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 if [[ ! -d ".git" ]]; then
     echo "Error: No .git directory found."
@@ -27,38 +31,7 @@ if [[ "$LOCAL" == "$REMOTE" ]]; then
 fi
 
 # Create rollback point
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-TAG_NAME="pre-update/$TIMESTAMP"
-SNAPSHOT_DIR="$DOTFILES_DIR/.state/snapshots/$TIMESTAMP"
-
-echo "Creating rollback point: $TAG_NAME"
-git tag --no-sign "$TAG_NAME"
-
-# Create snapshot directory
-mkdir -p "$SNAPSHOT_DIR"
-
-# Snapshot current brew state (if brew available)
-if command -v brew &>/dev/null; then
-    echo "Saving brew snapshot..."
-    brew bundle dump --file="$SNAPSHOT_DIR/Brewfile" --force
-fi
-
-# Snapshot current bundles (if exists)
-if [[ -f "$DOTFILES_DIR/.bundles" ]]; then
-    cp "$DOTFILES_DIR/.bundles" "$SNAPSHOT_DIR/bundles"
-fi
-
-# Create metadata
-cat > "$SNAPSHOT_DIR/metadata.json" << EOF
-{
-  "timestamp": "$TIMESTAMP",
-  "git_hash": "$LOCAL",
-  "git_tag": "$TAG_NAME",
-  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-EOF
-
-echo "Snapshot saved: .state/snapshots/$TIMESTAMP/"
+create_snapshot "pre-update"
 
 # Check for dirty files
 if [[ -n $(git status --porcelain) ]]; then
@@ -77,10 +50,9 @@ echo ""
 echo "Pulling latest changes..."
 git pull --rebase --autostash
 
-PREV_SHORT=$(git rev-parse --short "$TAG_NAME")
+PREV_SHORT=$(git rev-parse --short "pre-update/$SNAPSHOT_TIMESTAMP")
 NEW_SHORT=$(git rev-parse --short HEAD)
 echo ""
 echo "Updated: $PREV_SHORT -> $NEW_SHORT"
 echo ""
-echo "To rollback: just rollback $TIMESTAMP"
 echo "Run 'just upgrade' to apply any new changes."

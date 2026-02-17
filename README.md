@@ -52,10 +52,12 @@ This repo uses [just](https://github.com/casey/just) for common tasks:
 ```bash
 just                  # Show available commands
 just install          # Run full installation
-just upgrade          # Re-apply bundles (packages + symlinks)
+just upgrade          # Re-apply bundles (packages + symlinks + preferences/dock prompts)
 just update           # Pull latest changes (creates rollback point)
 just history          # Show available rollback points
 just rollback [id]    # Rollback to previous state
+just rollback [id] --with-brew  # Also rollback packages
+just rollback [id] --dry-run    # Preview changes
 just secrets ...      # Secrets management (init, backup, restore)
 ```
 
@@ -65,11 +67,14 @@ just secrets ...      # Secrets management (init, backup, restore)
 ~/.dotfiles/
 ├── config/                    # Base configurations
 │   ├── git/
+│   ├── ghostty/
 │   ├── starship/
 │   ├── wezterm/
 │   └── zsh/
 ├── platforms/
 │   └── macos/
+│       ├── bin/                # Platform scripts (on PATH)
+│       ├── secrets/            # Platform-level encrypted secrets
 │       ├── bundles/           # Bundle-specific setup
 │       │   ├── core/
 │       │   │   ├── Brewfile

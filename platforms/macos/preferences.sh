@@ -272,6 +272,13 @@ defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool
 ## Keyboard
 log "Configuring keyboard settings..."
 
+# Remap "Move focus to next window" from Cmd+` to Cmd+Ctrl+`
+# Frees Cmd+` for Ghostty quick terminal
+defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 27 '<dict><key>enabled</key><true/><key>value</key><dict><key>parameters</key><array><integer>96</integer><integer>50</integer><integer>1310720</integer></array><key>type</key><string>standard</string></dict></dict>'
+
+# Remap "Move focus to previous window" from Cmd+Shift+` to Cmd+Ctrl+Shift+`
+defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 28 '<dict><key>enabled</key><true/><key>value</key><dict><key>parameters</key><array><integer>96</integer><integer>50</integer><integer>1441792</integer></array><key>type</key><string>standard</string></dict></dict>'
+
 # Disable dictation (allows Fn key for other purposes)
 defaults write com.apple.HIToolbox AppleDictationAutoEnable -bool false
 
@@ -388,7 +395,7 @@ echo "  • Lock Screen: Power buttons shown"
 echo "  • Security: App Store and identified developers allowed"
 echo "  • Screenshots: Saved to ~/Pictures/Screenshots"
 echo "  • Trackpad: All gestures enabled (Show Desktop, Mission Control, App Exposé)"
-echo "  • Keyboard: Dictation disabled"
+echo "  • Keyboard: Window cycling remapped to Cmd+Ctrl+\`, dictation disabled"
 echo "  • Clock: Shows seconds, date, and day of week"
 echo "  • Finder: Hidden files shown, extensions shown, list view default"
 echo "  • Spotlight: Clipboard history available (Cmd+Space, then Cmd+4)"

@@ -216,20 +216,24 @@ prompt_yes_no() {
 # Initialize git in a directory (convert tarball to git repo)
 init_git_repo() {
     local dir="$1"
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
 
     echo "Initializing git repository..."
     cd "$dir"
     git init -q
+
+    # Commit tarball state so it's recoverable via rollback
+    git add -A
+    git commit -q -m "Tarball state before git conversion" --no-gpg-sign
     git remote add origin "$REPO_URL"
     git fetch -q origin
-    git reset origin/main
-    echo "  ✓ Git repository initialized"
+    git tag --no-sign "pre-conversion/$timestamp"
+    echo "  ✓ Tarball state saved (rollback tag: pre-conversion/$timestamp)"
 
-    # Check if any files differ from remote
-    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-        echo "  ⚠ Some files differ from remote repository"
-        return 1
-    fi
+    # Reset to remote, discarding tarball state cleanly
+    git reset --hard origin/main
+    echo "  ✓ Working tree updated to match remote"
     return 0
 }
 
@@ -305,7 +309,6 @@ if [[ "$IS_CURL" == true ]]; then
         if [[ "$TARGET_HAS_GIT" != true ]]; then
             if is_git_available; then
                 echo "Target was installed without git. Converting to git repository..."
-                echo "Note: Any custom changes to tracked files will show as uncommitted."
                 echo ""
                 init_git_repo "$TARGET_DIR" || true
                 echo ""
@@ -373,31 +376,17 @@ if [[ "$TARGET_CONFIGURED" == true ]]; then
         exit 1
     fi
 
+    # Convert tarball installs to git repos when git is now available
     if [[ "$TARGET_HAS_GIT" != true ]]; then
         if is_git_available; then
-            # Offer to initialize git
-            echo "Target is not a git repository."
-            if [[ "$FORCE" == true ]]; then
-                echo "Initializing git repository..."
-                init_git_repo "$TARGET_DIR" || true
-            else
-                echo ""
-                if prompt_yes_no "Initialize git repository? (enables updates/rollback)" "y"; then
-                    init_git_repo "$TARGET_DIR" || true
-                else
-                    echo ""
-                    echo "ERROR: Cannot proceed without git repository."
-                    echo "Updates and rollbacks require git."
-                    echo ""
-                    echo "Options:"
-                    echo "  1. Say yes to initialize git"
-                    echo "  2. Run with --force to proceed without git"
-                    echo ""
-                    exit 1
-                fi
-            fi
+            echo "Target was installed without git. Converting to git repository..."
             echo ""
-        elif [[ "$FORCE" != true ]]; then
+            init_git_repo "$TARGET_DIR" || true
+            echo ""
+        elif [[ "$FORCE" == true ]]; then
+            echo "Warning: Target is not a git repository (no rollback available)"
+            echo ""
+        else
             echo "ERROR: Target is not a git repository and git is not available."
             echo ""
             exit 1

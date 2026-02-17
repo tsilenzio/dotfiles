@@ -287,13 +287,16 @@ setup_loaded_symlinks() {
 # Create a rollback snapshot (git tag + state snapshot)
 # Usage: create_snapshot [tag_prefix]
 # Returns: timestamp on stdout
+SNAPSHOT_TIMESTAMP=""
+
 create_snapshot() {
     local prefix="${1:-pre-change}"
-    local timestamp
-    timestamp=$(date +%Y%m%d-%H%M%S)
-    local tag_name="$prefix/$timestamp"
-    local snapshot_dir="$DOTFILES_DIR/.state/snapshots/$timestamp"
+    SNAPSHOT_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    local tag_name="$prefix/$SNAPSHOT_TIMESTAMP"
+    local snapshot_dir="$DOTFILES_DIR/.state/snapshots/$SNAPSHOT_TIMESTAMP"
     local git_hash
+
+    echo "Creating rollback point: $tag_name"
 
     # Only create git tag if in a git repo
     if [[ -d "$DOTFILES_DIR/.git" ]]; then
@@ -307,6 +310,7 @@ create_snapshot() {
 
     # Snapshot current brew state
     if command -v brew &>/dev/null; then
+        echo "Saving brew snapshot..."
         brew bundle dump --file="$snapshot_dir/Brewfile" --force 2>/dev/null || true
     fi
 
@@ -318,14 +322,15 @@ create_snapshot() {
     # Create metadata
     cat > "$snapshot_dir/metadata.json" << EOF
 {
-  "timestamp": "$timestamp",
+  "timestamp": "$SNAPSHOT_TIMESTAMP",
   "git_hash": "$git_hash",
   "git_tag": "$tag_name",
   "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF
 
-    echo "$timestamp"
+    echo "Snapshot saved: .state/snapshots/$SNAPSHOT_TIMESTAMP/"
+    echo "  To rollback: just rollback $SNAPSHOT_TIMESTAMP"
 }
 
 ## Logging (colors disabled if not a terminal)
