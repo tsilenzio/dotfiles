@@ -308,7 +308,52 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
 fi
 
 ## Run bundle setup via upgrade.sh
-"$DOTFILES_DIR/scripts/upgrade.sh"
+DOTFILES_MODE="$MODE" "$DOTFILES_DIR/scripts/upgrade.sh"
+
+## Offer secrets restore on first install
+if [[ "$MODE" == "install" ]]; then
+    # Check if there are actual encrypted keys (not just the age key itself)
+    HAS_SECRET_KEYS=false
+    for pattern in "$DOTFILES_DIR"/secrets/ssh/*.age "$DOTFILES_DIR"/secrets/gpg/*.age; do
+        if [[ -e "$pattern" ]]; then
+            HAS_SECRET_KEYS=true
+            break
+        fi
+    done
+
+    if [[ "$HAS_SECRET_KEYS" == true ]]; then
+        echo ""
+        echo "════════════════════════════════════════════════════════════"
+        echo "  Secrets restoration"
+        echo "════════════════════════════════════════════════════════════"
+        echo ""
+        echo "Encrypted SSH/GPG keys were found in this repo."
+        echo "Restoring them now will set up SSH and GPG for this machine."
+
+        RUN_SECRETS=false
+        if [[ "$AUTO_CONFIRM" == "yes" ]]; then
+            RUN_SECRETS=true
+        elif [[ "$AUTO_CONFIRM" != "no" ]]; then
+            echo ""
+            echo -n "Restore secrets now? [y/N]: "
+            read -r SECRETS_ANSWER < /dev/tty
+            [[ "$SECRETS_ANSWER" =~ ^[Yy]$ ]] && RUN_SECRETS=true
+        fi
+
+        if [[ "$RUN_SECRETS" == true ]]; then
+            if "$DOTFILES_DIR/scripts/secrets.sh" restore; then
+                echo "  Secrets restored successfully."
+            else
+                echo ""
+                echo "  Secrets restore did not complete."
+                echo "  You can retry later with: just secrets restore"
+            fi
+        else
+            echo ""
+            echo "  Skipped. You can restore later with: just secrets restore"
+        fi
+    fi
+fi
 
 ## Post-install system configuration
 echo ""

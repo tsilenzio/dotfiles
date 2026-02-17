@@ -158,12 +158,16 @@ setup_gpg_loopback() {
 
 cleanup_gpg_loopback() {
     if [[ "$GPG_LOOPBACK_ADDED" == true ]]; then
-        if [[ -L "$GPG_LOOPBACK_CONF" ]]; then
-            local real_conf
-            real_conf=$(readlink "$GPG_LOOPBACK_CONF")
-            sed -i '' '/^allow-loopback-pinentry$/d' "$real_conf" 2>/dev/null || true
-        elif [[ -f "$GPG_LOOPBACK_CONF" ]]; then
-            sed -i '' '/^allow-loopback-pinentry$/d' "$GPG_LOOPBACK_CONF" 2>/dev/null || true
+        local target="$GPG_LOOPBACK_CONF"
+        # Resolve symlink to actual file
+        [[ -L "$target" ]] && target=$(readlink "$target")
+        if [[ -f "$target" ]]; then
+            # Use platform-appropriate sed in-place syntax
+            if [[ "$(uname -s)" == "Darwin" ]]; then
+                sed -i '' '/^allow-loopback-pinentry$/d' "$target" 2>/dev/null || true
+            else
+                sed -i '/^allow-loopback-pinentry$/d' "$target" 2>/dev/null || true
+            fi
         fi
         gpg-connect-agent reloadagent /bye >/dev/null 2>&1 || true
         GPG_LOOPBACK_ADDED=false
@@ -508,15 +512,14 @@ _cloud_restore() {
 
         secrets_dir="$dir/$CLOUD_SECRETS_SUBDIR"
         if [[ ! -d "$secrets_dir" ]]; then
-            error "No backup found at: $secrets_dir
-
-$(show_cloud_shorthands)"
+            warn "No backup found at: $secrets_dir"
+            return 1
         fi
     else
-        secrets_dir=$(find_cloud_secrets_dir) || \
-            error "No cloud backup found. Use --dir to specify location.
-
-$(show_cloud_shorthands)"
+        secrets_dir=$(find_cloud_secrets_dir) || {
+            warn "No cloud backup found. Use --dir to specify location."
+            return 1
+        }
     fi
 
     log "Restoring from: $secrets_dir"

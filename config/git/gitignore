@@ -3,6 +3,10 @@ mise.local.toml
 
 # Temporary files
 tmp/
+.tmp/
+
+# Internal documentation
+.docs/
 
 # Private/sensitive files (not for repos)
 .private/
