@@ -361,9 +361,9 @@ echo "════════════════════════�
 echo "  System configuration"
 echo "════════════════════════════════════════════════════════════"
 
-# Enable Touch ID for sudo (skip silently if already configured)
+# Enable Touch ID for sudo (skip if already configured)
 SUDO_LOCAL="/etc/pam.d/sudo_local"
-if [[ ! -f "$SUDO_LOCAL" ]]; then
+if ! grep -q "pam_tid.so" "$SUDO_LOCAL" 2>/dev/null; then
     echo "Enabling Touch ID for sudo..."
     echo "auth       sufficient     pam_tid.so" | sudo tee "$SUDO_LOCAL" > /dev/null
     echo "  ✓ Touch ID enabled"
