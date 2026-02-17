@@ -301,21 +301,19 @@ if [[ "$IS_CURL" == true ]]; then
             exit 1
         fi
 
-        # Check for non-git target
+        # Convert tarball installs to git repos when git is now available
         if [[ "$TARGET_HAS_GIT" != true ]]; then
-            if [[ "$FORCE" == true ]]; then
+            if is_git_available; then
+                echo "Target was installed without git. Converting to git repository..."
+                echo "Note: Any custom changes to tracked files will show as uncommitted."
+                echo ""
+                init_git_repo "$TARGET_DIR" || true
+                echo ""
+            elif [[ "$FORCE" == true ]]; then
                 echo "Warning: Target is not a git repository (no rollback available)"
                 echo ""
             else
-                echo "ERROR: Target is not a git repository."
-                echo "Updates and rollbacks are not available."
-                echo ""
-                echo "Options:"
-                echo "  1. Re-install with git:"
-                echo "     - Backup: cp ~/.dotfiles/.bundles ~/.bundles.backup"
-                echo "     - Remove: rm -rf ~/.dotfiles"
-                echo "     - Install: curl -fsSL .../bootstrap.sh | bash"
-                echo "  2. Run with --force to proceed anyway (not recommended)"
+                echo "ERROR: Target is not a git repository and git is not available."
                 echo ""
                 exit 1
             fi
