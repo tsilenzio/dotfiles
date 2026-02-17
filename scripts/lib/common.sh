@@ -42,6 +42,7 @@ safe_link() {
 ensure_config_dirs() {
     mkdir -p "$HOME/.config"
     mkdir -p "$HOME/.config/mise"
+    mkdir -p "$HOME/.config/ghostty"
     mkdir -p "$HOME/.config/wezterm"
     mkdir -p "$HOME/.ssh/sockets"
     mkdir -p "$HOME/.gnupg"
@@ -78,6 +79,7 @@ link_base_configs() {
     [[ -f "$config_dir/git/gitconfig" ]] && safe_link "$config_dir/git/gitconfig" "$HOME/.gitconfig"
     [[ -f "$config_dir/git/gitignore" ]] && safe_link "$config_dir/git/gitignore" "$HOME/.gitignore"
     [[ -f "$config_dir/mise/config.toml" ]] && safe_link "$config_dir/mise/config.toml" "$HOME/.config/mise/config.toml"
+    [[ -f "$config_dir/ghostty/config" ]] && safe_link "$config_dir/ghostty/config" "$HOME/.config/ghostty/config"
     [[ -f "$config_dir/wezterm/wezterm.lua" ]] && safe_link "$config_dir/wezterm/wezterm.lua" "$HOME/.config/wezterm/wezterm.lua"
     [[ -f "$config_dir/ssh/config" ]] && safe_link "$config_dir/ssh/config" "$HOME/.ssh/config"
     [[ -f "$config_dir/gnupg/gpg-agent.conf" ]] && safe_link "$config_dir/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
@@ -101,6 +103,7 @@ apply_config_overrides() {
             git/gitconfig)  dest="$HOME/.gitconfig" ;;
             git/gitignore)  dest="$HOME/.gitignore" ;;
             mise/*)         dest="$HOME/.config/mise/${rel_path#mise/}" ;;
+            ghostty/*)      dest="$HOME/.config/ghostty/${rel_path#ghostty/}" ;;
             wezterm/*)      dest="$HOME/.config/wezterm/${rel_path#wezterm/}" ;;
             ssh/*)          dest="$HOME/.ssh/${rel_path#ssh/}" ;;
             gnupg/*)        dest="$HOME/.gnupg/${rel_path#gnupg/}" ;;

@@ -18,6 +18,16 @@ export COPYFILE_DISABLE=1               # Don't create ._* files on macOS
 # Home directory tools (highest priority)
 export PATH=$HOME/bin:$HOME/.local/bin:$PATH
 
+# Dotfiles scripts: platform bin + active bundle bins
+# Uses zsh path array (tied to PATH) with (N) null glob qualifier
+if [[ -n "$DOTFILES_DIR" ]]; then
+    case "$OSTYPE" in
+        darwin*) path=("$DOTFILES_DIR/platforms/macos/bin"(N) $path) ;;
+        linux*)  path=("$DOTFILES_DIR/platforms/linux/bin"(N) $path) ;;
+    esac
+    path=("$DOTFILES_DIR"/loaded/*/bin(N) $path)
+fi
+
 # Flutter packages
 export PATH=$PATH:$HOME/.pub-cache/bin
 
@@ -70,6 +80,7 @@ srun() {
 # Aliases
 # ============================================================================
 alias vim="nvim"
+alias bm="bootmenu"
 
 # ============================================================================
 # Prompt (Starship)

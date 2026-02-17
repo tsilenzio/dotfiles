@@ -2,8 +2,11 @@
 # Public key: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx
 
 creation_rules:
-  - path_regex: secrets/.*\.(yaml|json|env|ini)$
+  - path_regex: secrets/.*\.(yaml|json|toml|env|ini)$
     age: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx
 
-  - path_regex: .*\.enc\.(yaml|json|env|ini)$
+  - path_regex: platforms/.*/secrets/.*\.(yaml|json|toml|env|ini)$
+    age: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx
+
+  - path_regex: .*\.enc\.(yaml|json|toml|env|ini)$
     age: age1zuj7cc4zznl8zzlfk60u5ujzh973mvmqly4af9daddjdmpfs6ftqhp03dx

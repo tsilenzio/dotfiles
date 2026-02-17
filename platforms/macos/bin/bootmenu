@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+
+import curses
+import os
+import plistlib
+import subprocess
+import sys
+
+ENV_VAR_SUFFIX = "_BLESS_PASSWD"
+RECOVERY = {"label": "Recovery", "type": "recovery"}
+SECRETS_SCRIPT = os.path.expanduser("~/.dotfiles/scripts/secrets.sh")
+
+# Color pairs
+C_LABEL = 1
+C_RECOVERY = 2
+C_DIM = 3
+
+
+def setup_colors():
+    curses.set_escdelay(25)  # default 1000ms feels sluggish
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(C_LABEL, curses.COLOR_CYAN, -1)
+    curses.init_pair(C_RECOVERY, curses.COLOR_YELLOW, -1)
+    curses.init_pair(C_DIM, 8, -1)  # gray
+
+
+def load_secrets():
+    result = subprocess.run(
+        [SECRETS_SCRIPT, "env"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"Failed to load secrets: {result.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+
+    secrets = {}
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("export ") and "=" in line:
+            key, _, value = line[7:].partition("=")
+            secrets[key] = value
+    return secrets
+
+
+def get_current_volume():
+    result = subprocess.run(
+        ["diskutil", "info", "-plist", "/"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    info = plistlib.loads(result.stdout)
+    return info.get("VolumeName")
+
+
+def discover_targets(secrets):
+    try:
+        mounted = os.listdir("/Volumes")
+    except OSError:
+        return []
+
+    targets = []
+    for key in sorted(secrets):
+        if not key.endswith(ENV_VAR_SUFFIX):
+            continue
+        prefix = key[: -len(ENV_VAR_SUFFIX)].replace("_", " ")
+        for name in mounted:
+            path = os.path.join("/Volumes", name)
+            if name.lower() == prefix.lower() and os.path.isdir(path):
+                targets.append({"label": name, "mount": path, "env_var": key})
+                break
+
+    return targets
+
+
+def default_selection(targets):
+    """Pre-select the first volume that isn't the one we booted from."""
+    current = get_current_volume()
+    if current:
+        for i, t in enumerate(targets):
+            if t["label"].lower() != current.lower():
+                return i
+    return 0
+
+
+def select_target(stdscr, targets):
+    curses.curs_set(0)
+    setup_colors()
+    selected = default_selection(targets)
+    in_recovery = False
+
+    dim = curses.color_pair(C_DIM)
+    label_color = curses.color_pair(C_LABEL)
+    recovery_color = curses.color_pair(C_RECOVERY)
+
+    while True:
+        stdscr.clear()
+        stdscr.addstr(1, 2, "Reboot to:", curses.A_BOLD)
+
+        for i, target in enumerate(targets):
+            y = i + 3
+            if not in_recovery and i == selected:
+                stdscr.addstr(y, 4, "▸ ", curses.A_BOLD)
+                stdscr.addstr(target["label"], label_color | curses.A_BOLD)
+            else:
+                stdscr.addstr(y, 4, "  ")
+                stdscr.addstr(target["label"], label_color)
+
+        divider_y = len(targets) + 4
+        stdscr.addstr(divider_y, 4, "─" * 20, dim)
+
+        recovery_y = divider_y + 1
+        if in_recovery:
+            stdscr.addstr(recovery_y, 4, "▸ ", curses.A_BOLD)
+            stdscr.addstr(RECOVERY["label"], recovery_color | curses.A_BOLD)
+        else:
+            stdscr.addstr(recovery_y, 4, "  ")
+            stdscr.addstr(RECOVERY["label"], dim)
+
+        hint = "↑↓ select  enter confirm  tab recovery  esc quit"
+        stdscr.addstr(recovery_y + 2, 2, hint, dim)
+        stdscr.refresh()
+
+        key = stdscr.getch()
+        if key == ord("\t"):
+            in_recovery = not in_recovery
+        elif key == curses.KEY_UP:
+            if in_recovery:
+                in_recovery = False
+            elif selected > 0:
+                selected -= 1
+        elif key == curses.KEY_DOWN:
+            if not in_recovery and selected < len(targets) - 1:
+                selected += 1
+        elif key in (curses.KEY_ENTER, 10, 13):
+            return RECOVERY if in_recovery else targets[selected]
+        elif key in (27, ord("q")):
+            return None
+
+
+def restart():
+    """Restart via System Events so apps get a chance to save state."""
+    subprocess.run(
+        ["osascript", "-e", 'tell app "System Events" to restart'],
+    )
+
+
+def boot_to_recovery():
+    result = subprocess.run(
+        ["sudo", "nvram", "recovery-boot-mode=unused"],
+        text=True,
+    )
+    if result.returncode != 0:
+        print("Failed to set recovery boot mode.", file=sys.stderr)
+        sys.exit(1)
+
+
+def boot_to_volume(target, password):
+    result = subprocess.run(
+        ["sudo", "bless", "-mount", target["mount"], "--setBoot", "--nextonly", "--stdinpass"],
+        input=password,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("Failed to set boot volume.", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    secrets = load_secrets()
+    targets = discover_targets(secrets)
+
+    if not targets:
+        print(f"No targets found. Need *{ENV_VAR_SUFFIX} vars matching /Volumes/.", file=sys.stderr)
+        sys.exit(1)
+
+    target = curses.wrapper(select_target, targets)
+    if target is None:
+        sys.exit(0)
+
+    if target.get("type") == "recovery":
+        boot_to_recovery()
+    else:
+        password = secrets.get(target["env_var"])
+        if not password:
+            print(f"Error: {target['env_var']} not found in secrets.", file=sys.stderr)
+            sys.exit(1)
+        boot_to_volume(target, password)
+
+    print(f"Rebooting into {target['label']}...")
+    restart()
+
+
+if __name__ == "__main__":
+    main()
