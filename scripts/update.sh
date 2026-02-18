@@ -29,6 +29,11 @@ if [[ ! -d ".git" ]]; then
     exit 1
 fi
 
+# Ensure tracking is set (tarball-to-git conversions may lack it)
+if ! git rev-parse --abbrev-ref '@{u}' &>/dev/null; then
+    git branch --set-upstream-to=origin/main main 2>/dev/null || true
+fi
+
 # Fetch first to check if there are updates
 git fetch
 LOCAL=$(git rev-parse HEAD)

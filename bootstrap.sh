@@ -267,6 +267,7 @@ init_git_repo() {
 
     # Reset to remote, discarding tarball state cleanly
     git reset --hard origin/main
+    git branch --set-upstream-to=origin/main main
     echo "  ✓ Working tree updated to match remote"
     return 0
 }
