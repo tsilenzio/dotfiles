@@ -43,6 +43,10 @@ unlock:
     @rm -f "{{DOTFILES_DIR}}/.state/brew.lock"
     @echo "Brew unlocked. Upgrades will install packages normally."
 
+# Preview a PR, branch, or commit (snapshot + checkout)
+preview *args:
+    "{{SCRIPTS_DIR}}/preview.sh" {{args}}
+
 # Show dev lock status
 status:
     @echo "Brew: $(test -f '{{DOTFILES_DIR}}/.state/brew.lock' && echo 'locked' || echo 'unlocked')"

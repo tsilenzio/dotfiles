@@ -29,6 +29,24 @@ _rune_secrets_find() {
 rune() {
     local dotfiles_dir="${DOTFILES_DIR:-$HOME/.dotfiles}"
 
+    # Preview reminder + activity tracking
+    if [[ -f "$dotfiles_dir/.state/preview" ]]; then
+        local _target _last_active _now _age_hours
+        _target=$(grep '^target=' "$dotfiles_dir/.state/preview" 2>/dev/null | cut -d= -f2)
+        _last_active=$(grep '^last_active=' "$dotfiles_dir/.state/preview" 2>/dev/null | cut -d= -f2)
+        _now=$(date +%s)
+        _age_hours=$(( (_now - ${_last_active:-_now}) / 3600 ))
+
+        if [[ $_age_hours -ge 24 ]]; then
+            echo -e "\033[1;33mWarning: Preview active since $(date -r "${_last_active:-_now}" '+%b %d'). Restore with 'rune dev preview --restore'\033[0m"
+        else
+            echo -e "\033[0;33m[preview: ${_target:-active}]\033[0m"
+        fi
+
+        # Update last_active timestamp
+        sed -i '' "s/^last_active=.*/last_active=$_now/" "$dotfiles_dir/.state/preview"
+    fi
+
     case "$1" in
         run)
             # Run a command with all secrets as env vars (ephemeral)
