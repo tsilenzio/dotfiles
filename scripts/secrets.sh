@@ -452,6 +452,63 @@ _cloud_backup_gpg_passphrase() {
     log "  GPG passphrase backed up: gpg-passphrase-$keyid.age"
 }
 
+# Internal: Import GPG passphrase into macOS Keychain for pinentry-touchid/pinentry-mac
+_keychain_import_gpg_passphrase() {
+    local keyid="$1"
+    local passphrase="$2"
+
+    [[ "$PLATFORM" != "macos" ]] && return 0
+
+    # Get uid label from GPG
+    local uid_label
+    uid_label=$(gpg --list-keys --with-colons "$keyid" 2>/dev/null | awk -F: '/^uid/{print $10; exit}')
+    local short_keyid="${keyid: -16}"
+    [[ -z "$short_keyid" ]] && short_keyid="$keyid"
+    local label="${uid_label} (${short_keyid})"
+
+    # Find pinentry binaries for trusted app ACL
+    local trust_args=()
+    local pinentry_touchid pinentry_mac
+    pinentry_touchid=$(command -v pinentry-touchid 2>/dev/null) || true
+    pinentry_mac=$(command -v pinentry-mac 2>/dev/null) || true
+    [[ -n "$pinentry_touchid" ]] && trust_args+=(-T "$pinentry_touchid")
+    [[ -n "$pinentry_mac" ]] && trust_args+=(-T "$pinentry_mac")
+
+    # Get all keygrips for this key (primary + subkeys)
+    local keygrips=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && keygrips+=("$line")
+    done < <(gpg --list-keys --with-keygrip --with-colons "$keyid" 2>/dev/null | awk -F: '/^grp/{print $10}')
+
+    if [[ ${#keygrips[@]} -eq 0 ]]; then
+        warn "Could not find keygrips for $keyid"
+        return 0
+    fi
+
+    local added=0
+    for keygrip in "${keygrips[@]}"; do
+        # Skip if entry already exists (avoids Keychain auth prompt)
+        if security find-generic-password -a "$keygrip" -s "GnuPG" &>/dev/null; then
+            continue
+        fi
+
+        # Add with trusted app ACL for pinentry-touchid and pinentry-mac
+        security add-generic-password \
+            -a "$keygrip" \
+            -s "GnuPG" \
+            -l "$label" \
+            -w "$passphrase" \
+            "${trust_args[@]}"
+        ((added++)) || true
+    done
+
+    if [[ $added -gt 0 ]]; then
+        log "  GPG passphrase added to Keychain ($added keygrips)"
+    else
+        log "  GPG passphrase already in Keychain (skipped)"
+    fi
+}
+
 # Internal: Check if GPG key is already fully backed up
 _is_gpg_key_backed_up() {
     local keyid="$1"
@@ -1067,9 +1124,45 @@ cmd_restore() {
             }
             rm -f "$tmp_key"
             echo "  ✓ Key $keyid imported"
+
+            # Import passphrase into Keychain for pinentry-touchid/pinentry-mac
+            _keychain_import_gpg_passphrase "$keyid" "$KEY_PASSPHRASE"
         done
         echo ""
         echo "GPG keys restored."
+
+        # Prompt user to grant pinentry-touchid permanent Keychain access
+        if [[ "$PLATFORM" == "macos" ]] && command -v pinentry-touchid &>/dev/null; then
+            echo ""
+            echo "To enable Touch ID for GPG signing, macOS needs a one-time approval."
+            echo "A Keychain dialog will appear — click \"Always Allow\"."
+            echo "(If Keychain is locked, you may also need your macOS login password.)"
+            echo ""
+            echo -n "Press Enter to continue..."
+            read -r < /dev/tty
+
+            local attempts=0
+            local max_attempts=3
+            while [[ $attempts -lt $max_attempts ]]; do
+                ((attempts++)) || true
+                if echo "test" | gpg --clear-sign >/dev/null 2>&1; then
+                    log "  Touch ID enabled for GPG signing"
+                    break
+                fi
+                if [[ $attempts -lt $max_attempts ]]; then
+                    warn "  GPG signing failed — make sure to click \"Always Allow\" (not \"Allow\" or \"Deny\")"
+                    echo -n "  Try again? [Y/n]: "
+                    read -r retry < /dev/tty
+                    if [[ "$retry" =~ ^[Nn]$ ]]; then
+                        warn "  Skipped. Click \"Always Allow\" on your next GPG signing prompt."
+                        break
+                    fi
+                else
+                    warn "  GPG signing failed after $max_attempts attempts."
+                    warn "  Click \"Always Allow\" on your next GPG signing prompt to enable Touch ID."
+                fi
+            done
+        fi
     }
 
     # Always try cloud restore first
