@@ -10,7 +10,7 @@ Planned improvements and ideas for the dotfiles system.
 
 - [ ] **Test installation end-to-end** - Run through full install on a fresh VM to verify bundle structure, dependency resolution, and package installation.
 
-- [ ] **Global dotfiles command (`rune`)** - Run dotfiles commands from anywhere without `cd ~/.dotfiles` first. Command name: `rune` (fallback: `runectl` if conflict with Rune language CLI ~1.7k stars).
+- [x] **Global dotfiles command (`rune`)** - Run dotfiles commands from anywhere without `cd ~/.dotfiles` first. Command name: `rune` (fallback: `runectl` if conflict with Rune language CLI ~1.7k stars).
 
   **Approach (interim, pre-Rust):**
   ```bash
@@ -141,7 +141,7 @@ Planned improvements and ideas for the dotfiles system.
   - Add `git-trust --revoke` to remove current secrets from `.trusted`
   - Add `git-trust-scan` command to discover repos with untrusted hooks
 
-- [ ] **Decouple scripts from dotfiles** - Extract `just` commands and scripts (like `srun`) into standalone tools that can be invoked from anywhere without being in the dotfiles directory. Currently `srun` is a shell function; extract to a standalone script in PATH.
+- [ ] **Decouple scripts from dotfiles** - Extract `just` commands and scripts into standalone tools that can be invoked from anywhere without being in the dotfiles directory. Partially addressed by the `rune` shell function; full decoupling planned for the Rust rewrite.
 
 - [ ] **Linux support** - Add `platforms/linux/` with bundles. The shared library (common.sh) and bundle system are designed to support this.
 
