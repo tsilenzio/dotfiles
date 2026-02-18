@@ -5,16 +5,21 @@ set -e
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# List git-aware files (tracked + untracked non-ignored) that exist on disk
+_lint_files() {
+    git -C "$DOTFILES_DIR" ls-files --cached --others --exclude-standard \
+        | grep -E "$1" \
+        | while IFS= read -r f; do
+            [[ -f "$DOTFILES_DIR/$f" ]] && echo "$DOTFILES_DIR/$f"
+        done
+}
+
 echo "Running ShellCheck..."
-find "$DOTFILES_DIR" -type f \( -name "*.sh" -o -name "*.bash" \) \
-    ! -path "*/.git/*" ! -path "*/.cache/*" \
-    -exec shellcheck --severity=warning -x {} +
+_lint_files '\.(sh|bash)$' | xargs shellcheck --severity=warning -x
 
 echo ""
 echo "Checking Zsh syntax..."
-find "$DOTFILES_DIR" -type f \( -name "zshrc*" -o -name "zshenv*" -o -name "*.zsh" \) \
-    ! -path "*/.git/*" ! -path "*/.cache/*" \
-    -exec zsh -n {} \;
+_lint_files '(zshrc|zshenv|zprofile|\.zsh)$' | xargs -I{} zsh -n {}
 
 echo ""
 echo "All checks passed!"
