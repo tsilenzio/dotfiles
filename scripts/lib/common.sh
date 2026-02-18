@@ -61,6 +61,18 @@ install_brewfile() {
         return 0
     fi
 
+    # Dev brew lock: skip installation but show what would change
+    if [[ -f "$DOTFILES_DIR/.state/brew.lock" ]]; then
+        echo "Brew locked — skipping: $(basename "$brewfile")"
+        local check_output
+        check_output=$(brew bundle check --file="$brewfile" 2>&1) || true
+        if [[ "$check_output" != *"are satisfied"* ]]; then
+            echo "  Would change:"
+            echo "$check_output" | sed 's/^/    /'
+        fi
+        return 0
+    fi
+
     brew bundle --verbose --file="$brewfile" || {
         echo "Warning: Some packages failed to install"
     }

@@ -45,6 +45,10 @@ decrypt file output="":
 edit file:
     "{{SECRETS_SCRIPT}}" edit "{{file}}"
 
+# Output decrypted env vars from hierarchy
+env *args:
+    "{{SECRETS_SCRIPT}}" env {{args}}
+
 # Reset secrets (--force required to confirm)
 reset *args:
     "{{SECRETS_SCRIPT}}" reset {{args}}

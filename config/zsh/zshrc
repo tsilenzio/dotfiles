@@ -70,9 +70,9 @@ fi
 # ============================================================================
 # Functions
 # ============================================================================
-# Secrets helpers (srun, sload, _secrets_find)
-if [[ -n "$DOTFILES_DIR" && -f "$DOTFILES_DIR/config/zsh/secrets.zsh" ]]; then
-    source "$DOTFILES_DIR/config/zsh/secrets.zsh"
+# Rune CLI (dotfiles management from anywhere)
+if [[ -n "$DOTFILES_DIR" ]]; then
+    source "$DOTFILES_DIR/config/zsh/rune.zsh"
 fi
 
 # ============================================================================

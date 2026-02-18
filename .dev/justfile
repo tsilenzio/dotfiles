@@ -30,3 +30,19 @@ install:
 # Run linters (shellcheck + zsh syntax)
 lint:
     "{{SCRIPTS_DIR}}/lint.sh"
+
+# Lock brew operations (skip installs during upgrade, show diffs instead)
+lock:
+    @mkdir -p "{{DOTFILES_DIR}}/.state"
+    @touch "{{DOTFILES_DIR}}/.state/brew.lock"
+    @echo "Brew locked. Upgrades will skip package installation."
+    @echo "Unlock with: rune dev unlock"
+
+# Unlock brew operations
+unlock:
+    @rm -f "{{DOTFILES_DIR}}/.state/brew.lock"
+    @echo "Brew unlocked. Upgrades will install packages normally."
+
+# Show dev lock status
+status:
+    @echo "Brew: $(test -f '{{DOTFILES_DIR}}/.state/brew.lock' && echo 'locked' || echo 'unlocked')"
