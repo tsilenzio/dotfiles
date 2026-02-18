@@ -161,6 +161,13 @@ git reset --hard "$TAG_NAME"
 echo "Git reset complete."
 
 # Handle brew rollback if requested
+if [[ "$WITH_BREW" == "true" ]] && [[ -f "$DOTFILES_DIR/.state/brew.lock" ]]; then
+    echo ""
+    echo "Warning: Brew is locked (dev mode). Skipping brew rollback."
+    echo "  Unlock with: rune dev unlock"
+    WITH_BREW=false
+fi
+
 if [[ "$WITH_BREW" == "true" ]]; then
     mkdir -p "$LOG_DIR"
     LOG_FILE="$LOG_DIR/rollback-$(date +%Y%m%d-%H%M%S).log"
