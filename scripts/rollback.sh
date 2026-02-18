@@ -15,7 +15,7 @@ source "$DOTFILES_DIR/scripts/lib/common.sh"
 SNAPSHOT_BASE="$DOTFILES_DIR/.state/snapshots"
 LOG_DIR="$DOTFILES_DIR/.state/logs"
 
-ALL_PREFIXES=("pre-update" "pre-upgrade" "pre-bundle-change" "pre-change" "pre-conversion" "pre-rollback")
+ALL_PREFIXES=("pre-update" "pre-upgrade" "pre-bundle-change" "pre-bootstrap" "pre-change" "pre-conversion" "pre-rollback")
 
 # Parse arguments
 TARGET=""

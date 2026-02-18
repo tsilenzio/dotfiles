@@ -1,3 +1,6 @@
+# Skip Gatekeeper quarantine for all cask installs
+cask_args no_quarantine: true
+
 # Taps
 tap "sijanc147/formulas"
 

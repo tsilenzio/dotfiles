@@ -286,8 +286,9 @@ setup_loaded_symlinks() {
 
 # Create a rollback snapshot (git tag + state snapshot)
 # Usage: create_snapshot [tag_prefix]
-# Returns: timestamp on stdout
+# Sets: SNAPSHOT_TIMESTAMP, SNAPSHOT_TAG_NAME
 SNAPSHOT_TIMESTAMP=""
+SNAPSHOT_TAG_NAME=""
 
 create_snapshot() {
     local prefix="${1:-pre-change}"
@@ -330,7 +331,10 @@ create_snapshot() {
 EOF
 
     echo "Snapshot saved: .state/snapshots/$SNAPSHOT_TIMESTAMP/"
-    echo "  To rollback: just rollback $SNAPSHOT_TIMESTAMP"
+
+    # Set result variable for caller
+    # shellcheck disable=SC2034
+    SNAPSHOT_TAG_NAME="$tag_name"
 }
 
 ## Logging (colors disabled if not a terminal)

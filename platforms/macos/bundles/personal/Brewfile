@@ -1,6 +1,9 @@
 # Personal Brewfile (additions to base Brewfile)
 # These packages are installed only for personal environments
 
+# Skip Gatekeeper quarantine for all cask installs
+cask_args no_quarantine: true
+
 cask "microsoft-word"                   # Word from Microsoft Office Suite
 cask "microsoft-excel"                  # Excel from Microsoft Office Suite
 cask "godot-mono"                       # Godot game engine (C# support)
@@ -10,6 +13,10 @@ cask "roblox"                           # Roblox gaming platform
 cask "steam"                            # Steam gaming platform
 cask "moonlight"                        # Game streaming
 cask "parsec"                           # Remote desktop/gaming
+
+# Media & Downloads
+mas "Elmedia Video Player", id: 1044549675  # Video player (Pro via in-app purchase)
+cask "folx"                             # Download manager (Pro via license key)
 
 # Productivity & Communication
 cask "spotify"                          # Music streaming

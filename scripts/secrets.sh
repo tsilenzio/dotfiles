@@ -699,10 +699,14 @@ cmd_decrypt_raw() {
 
     unlock_key
 
-    log "Decrypting $input with age..."
-    age -d -i "$TEMP_KEY_FILE" -o "$output" "$input"
-    chmod 600 "$output"
-    log "Decrypted: $output"
+    if [[ "$output" == "-" ]]; then
+        age -d -i "$TEMP_KEY_FILE" "$input"
+    else
+        log "Decrypting $input with age..."
+        age -d -i "$TEMP_KEY_FILE" -o "$output" "$input"
+        chmod 600 "$output"
+        log "Decrypted: $output"
+    fi
 }
 
 cmd_list() {

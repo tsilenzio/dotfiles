@@ -18,6 +18,9 @@ window-save-state = always
 # macOS
 macos-option-as-alt = true
 
+# Opt+Backspace → send ESC+DEL so zsh receives backward-kill-word
+keybind = opt+backspace=text:\x1b\x7f
+
 # Quick terminal (Cmd+`)
 keybind = global:cmd+grave_accent=toggle_quick_terminal
 quick-terminal-position = top
