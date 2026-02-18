@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""License manager — view and apply application licenses from encrypted secrets.
+
+Interactive mode (just licenses):
+  Shows unconfigured licenses, copies keys to clipboard or imports
+  license files, and tracks which have been configured.
+
+Auto mode (--auto --bundle <name>):
+  Called during setup.sh — silently imports file-type licenses only.
+"""
+
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+try:
+    import tomllib
+except ImportError:
+    # tomllib requires Python 3.11+; on fresh installs system Python may be older.
+    # Auto mode exits cleanly (licenses aren't critical during setup).
+    if "--auto" in sys.argv:
+        sys.exit(0)
+    sys.exit("licenses: Python 3.11+ required (tomllib)")
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+
+DOTFILES = os.environ.get("DOTFILES_DIR", os.path.expanduser("~/.dotfiles"))
+SECRETS_SCRIPT = os.path.join(DOTFILES, "scripts/secrets.sh")
+STATE_FILE = os.path.join(DOTFILES, ".state/licenses.configured")
+
+PLAT = "macos" if platform.system() == "Darwin" else "linux"
+CONFIG_PATH = os.path.join(DOTFILES, f"platforms/{PLAT}/secrets/licenses.toml.age")
+
+# ─── Colors ───────────────────────────────────────────────────────────────────
+
+BLUE = "\033[0;34m"
+GREEN = "\033[0;32m"
+YELLOW = "\033[1;33m"
+DIM = "\033[2m"
+BOLD = "\033[1m"
+NC = "\033[0m"
+
+# ─── State ────────────────────────────────────────────────────────────────────
+
+def load_configured():
+    if not os.path.isfile(STATE_FILE):
+        return set()
+    with open(STATE_FILE) as f:
+        return {line.strip() for line in f if line.strip()}
+
+
+def save_configured(names):
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    with open(STATE_FILE, "w") as f:
+        f.write("\n".join(sorted(names)) + "\n")
+
+# ─── Decrypt ──────────────────────────────────────────────────────────────────
+
+def load_licenses():
+    if not os.path.isfile(CONFIG_PATH):
+        return None
+    if not os.path.isfile(SECRETS_SCRIPT):
+        return None
+    result = subprocess.run(
+        [SECRETS_SCRIPT, "decrypt-raw", CONFIG_PATH, "-"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        return tomllib.loads(result.stdout)
+    except tomllib.TOMLDecodeError:
+        return None
+
+# ─── Actions ──────────────────────────────────────────────────────────────────
+
+def apply_file_license(lic):
+    """Write content to temp file with correct extension and open it."""
+    ext = lic.get("extension", "license")
+    content = lic.get("content", "")
+    if not content:
+        return False
+    tmp_dir = tempfile.mkdtemp()
+    tmp_path = os.path.join(tmp_dir, f"license.{ext}")
+    try:
+        with open(tmp_path, "w") as f:
+            f.write(content)
+        subprocess.run(["open", tmp_path], check=True)
+        time.sleep(3)
+        return True
+    except Exception:
+        return False
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def apply_key_license(lic):
+    """Copy key to clipboard and optionally open the app."""
+    key = lic.get("key", "")
+    if not key:
+        return False
+    subprocess.run(["pbcopy"], input=key.encode(), check=True)
+    app = lic.get("app", "")
+    if app:
+        subprocess.run(["open", "-a", app], capture_output=True)
+    return True
+
+# ─── Interactive Mode ─────────────────────────────────────────────────────────
+
+def interactive(data, bundle_filter=None):
+    licenses = data.get("licenses", {})
+    configured = load_configured()
+
+    while True:
+        # Build display list
+        items = []
+        for name, lic in licenses.items():
+            if bundle_filter and lic.get("bundle") != bundle_filter:
+                continue
+            items.append((name, lic))
+
+        if not items:
+            print(f"{DIM}No licenses found.{NC}")
+            return
+
+        # Show menu
+        print()
+        print(f"{BOLD}  Licenses{NC}")
+        print(f"  {'─' * 48}")
+
+        unconfigured_count = 0
+        for i, (name, lic) in enumerate(items, 1):
+            app = lic.get("app", name)
+            lic_type = "file import" if lic.get("type") == "file" else "license key"
+            is_configured = name in configured
+
+            if is_configured:
+                mark = f"{GREEN}✓{NC}"
+                suffix = f"{DIM}configured{NC}"
+            else:
+                mark = f"{DIM}○{NC}"
+                suffix = ""
+                unconfigured_count += 1
+
+            num = f"{DIM}{i}.{NC}" if is_configured else f"{i}."
+            print(f"  {mark} {num} {app:<24} {DIM}{lic_type}{NC}  {suffix}")
+
+        print()
+
+        if unconfigured_count == 0:
+            print(f"  {GREEN}All licenses configured.{NC}")
+            print()
+            return
+
+        # Prompt
+        try:
+            choice = input(f"  Select (1-{len(items)}, q to quit): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if choice.lower() in ("q", ""):
+            return
+
+        try:
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(items):
+                raise ValueError
+        except ValueError:
+            continue
+
+        name, lic = items[idx]
+        app = lic.get("app", name)
+        lic_type = lic.get("type", "key")
+
+        print()
+
+        # Apply
+        if lic_type == "file":
+            print(f"  {BLUE}Importing {app} license...{NC}")
+            if apply_file_license(lic):
+                print(f"  {GREEN}✓ {app} license imported{NC}")
+            else:
+                print(f"  {YELLOW}Failed to import {app} license{NC}")
+                continue
+        elif lic_type == "key":
+            instructions = lic.get("instructions", "")
+            if apply_key_license(lic):
+                print(f"  {GREEN}✓ Key copied to clipboard{NC}")
+                if instructions:
+                    print(f"  {DIM}Paste in: {instructions}{NC}")
+            else:
+                print(f"  {YELLOW}Failed to copy {app} key{NC}")
+                continue
+
+        # Mark as configured
+        print()
+        try:
+            mark = input(f"  Mark {app} as configured? [y/n]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if mark == "y":
+            configured.add(name)
+            save_configured(configured)
+            print(f"  {GREEN}✓ {app} configured{NC}")
+
+# ─── Auto Mode ────────────────────────────────────────────────────────────────
+
+def auto(data, bundle):
+    """Called during setup — silently imports file-type licenses."""
+    licenses = data.get("licenses", {})
+    configured = load_configured()
+
+    for name, lic in licenses.items():
+        if lic.get("bundle") != bundle:
+            continue
+        if name in configured:
+            continue
+        if lic.get("type") != "file":
+            continue
+
+        app = lic.get("app", name)
+        print(f"{BLUE}[info]{NC} Importing {app} license...")
+        if apply_file_license(lic):
+            configured.add(name)
+            save_configured(configured)
+            print(f"{GREEN}[ok]{NC} {app} license imported")
+        else:
+            print(f"{YELLOW}[warn]{NC} Failed to import {app} license")
+
+    # Count remaining unconfigured key-type licenses
+    pending = []
+    for name, lic in licenses.items():
+        if lic.get("bundle") != bundle:
+            continue
+        if name in configured:
+            continue
+        if lic.get("type") == "key":
+            pending.append(lic.get("app", name))
+
+    if pending:
+        apps = ", ".join(pending)
+        print(f"{BLUE}[info]{NC} License keys available for {apps}. Run: just licenses")
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    auto_mode = False
+    bundle = None
+
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--auto":
+            auto_mode = True
+            i += 1
+        elif args[i] == "--bundle" and i + 1 < len(args):
+            bundle = args[i + 1]
+            i += 2
+        elif args[i] in ("-h", "--help"):
+            print(f"Usage: {sys.argv[0]} [--bundle <name>] [--auto]")
+            print()
+            print("  --bundle NAME   Filter licenses by bundle")
+            print("  --auto          Auto mode: import file-type licenses only (for setup.sh)")
+            sys.exit(0)
+        else:
+            i += 1
+
+    data = load_licenses()
+    if data is None:
+        if not auto_mode:
+            print(f"{DIM}No licenses found.{NC}")
+        return
+
+    if auto_mode:
+        if not bundle:
+            print("--auto requires --bundle", file=sys.stderr)
+            sys.exit(1)
+        auto(data, bundle)
+    else:
+        interactive(data, bundle_filter=bundle)
+
+
+if __name__ == "__main__":
+    main()

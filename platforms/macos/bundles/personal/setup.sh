@@ -11,6 +11,7 @@
 
 set -e
 
+# shellcheck disable=SC2034
 MODE="${1:-install}"
 
 # Load shared library
@@ -28,12 +29,8 @@ if [[ -d "$BUNDLE_DIR/config" ]]; then
     apply_config_overrides "$BUNDLE_DIR"
 fi
 
-## Personal-specific setup
-if [[ "$MODE" == "install" ]]; then
-    echo ""
-    echo "First-time personal setup..."
-    # Add any first-time-only setup here
-fi
+## Restore file-type licenses (auto-import only)
+"$DOTFILES_DIR/scripts/licenses" --auto --bundle "$BUNDLE_NAME"
 
 echo ""
 echo "Personal setup complete!"

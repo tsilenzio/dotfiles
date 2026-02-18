@@ -10,6 +10,7 @@
 #
 # Flags:
 #   --force         Skip safety checks and prompts (yes to everything)
+#   --keep          Preserve uncommitted changes (skip dirty-state errors)
 #   --clone         Copy state files when source is configured
 #   --select X      Pass through to install.sh (select bundle)
 #   --reveal X      Pass through to install.sh (reveal hidden bundle)
@@ -19,6 +20,7 @@ set -e
 ## Parse arguments
 TARGET_DIR=""
 FORCE=false
+KEEP_CHANGES=false
 CLONE=false
 PASSTHROUGH_ARGS=()
 
@@ -34,6 +36,7 @@ Usage:
 Options:
   --help          Show this help message
   --force         Skip safety checks and prompts
+  --keep          Preserve uncommitted changes (skip dirty-state errors)
   --clone         Copy state files (.bundles, .state/) when source is configured
   --select NAME   Pre-select a bundle (can be used multiple times)
   --reveal NAME   Show a hidden bundle in the selection menu
@@ -58,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --force)
             FORCE=true
+            shift
+            ;;
+        --keep)
+            KEEP_CHANGES=true
             shift
             ;;
         --clone)
@@ -213,6 +220,33 @@ prompt_yes_no() {
     esac
 }
 
+# Snapshot dirty state after tarball-to-git conversion, then clean
+# Commits local changes so `just rollback` can restore them via create_snapshot
+snapshot_and_clean() {
+    local dir="$1"
+    local prev_dir="$PWD"
+    cd "$dir"
+
+    # Commit dirty files so the snapshot tag preserves them
+    git add -A
+    if [[ -n "$(git status --porcelain)" ]]; then
+        git commit -q --no-gpg-sign -m "chore: preserve tarball-era local changes"
+    else
+        echo "No changes to preserve after staging."
+        cd "$prev_dir"
+        return 0
+    fi
+
+    # Use shared snapshot function (creates tag + brew dump + bundles + metadata)
+    DOTFILES_DIR="$dir" source "$dir/scripts/lib/common.sh"
+    create_snapshot "pre-bootstrap"
+
+    # Reset to clean state
+    git reset -q --hard origin/main
+    echo "Working tree cleaned. Recover with: just rollback $SNAPSHOT_TIMESTAMP"
+    cd "$prev_dir"
+}
+
 # Initialize git in a directory (convert tarball to git repo)
 init_git_repo() {
     local dir="$1"
@@ -295,12 +329,13 @@ if [[ "$IS_CURL" == true ]]; then
         echo ""
 
         # Check for dirty state
-        if [[ "$TARGET_IS_DIRTY" == true ]] && [[ "$FORCE" != true ]]; then
+        if [[ "$TARGET_IS_DIRTY" == true ]] && [[ "$FORCE" != true ]] && [[ "$KEEP_CHANGES" != true ]]; then
             echo "ERROR: Target has uncommitted changes."
             echo ""
             echo "Options:"
             echo "  1. Commit or stash your changes first"
-            echo "  2. Run with --force to proceed anyway"
+            echo "  2. Run with --keep to preserve them and proceed"
+            echo "  3. Run with --force to skip all safety checks"
             echo ""
             exit 1
         fi
@@ -311,6 +346,16 @@ if [[ "$IS_CURL" == true ]]; then
                 echo "Target was installed without git. Converting to git repository..."
                 echo ""
                 init_git_repo "$TARGET_DIR" || true
+
+                # Handle dirty state after conversion
+                if is_dirty "$TARGET_DIR"; then
+                    if [[ "$KEEP_CHANGES" == true ]]; then
+                        echo "  Keeping local changes (--keep)."
+                    else
+                        echo ""
+                        snapshot_and_clean "$TARGET_DIR"
+                    fi
+                fi
                 echo ""
             elif [[ "$FORCE" == true ]]; then
                 echo "Warning: Target is not a git repository (no rollback available)"
@@ -366,12 +411,13 @@ if [[ "$TARGET_CONFIGURED" == true ]]; then
     echo ""
 
     # Safety checks
-    if [[ "$TARGET_IS_DIRTY" == true ]] && [[ "$FORCE" != true ]]; then
+    if [[ "$TARGET_IS_DIRTY" == true ]] && [[ "$FORCE" != true ]] && [[ "$KEEP_CHANGES" != true ]]; then
         echo "ERROR: Target has uncommitted changes."
         echo ""
         echo "Options:"
         echo "  1. Commit or stash your changes: cd $TARGET_DIR && git stash"
-        echo "  2. Run with --force to proceed anyway"
+        echo "  2. Run with --keep to preserve them and proceed"
+        echo "  3. Run with --force to skip all safety checks"
         echo ""
         exit 1
     fi
@@ -382,6 +428,16 @@ if [[ "$TARGET_CONFIGURED" == true ]]; then
             echo "Target was installed without git. Converting to git repository..."
             echo ""
             init_git_repo "$TARGET_DIR" || true
+
+            # Handle dirty state after conversion
+            if is_dirty "$TARGET_DIR"; then
+                if [[ "$KEEP_CHANGES" == true ]]; then
+                    echo "  Keeping local changes (--keep)."
+                else
+                    echo ""
+                    snapshot_and_clean "$TARGET_DIR"
+                fi
+            fi
             echo ""
         elif [[ "$FORCE" == true ]]; then
             echo "Warning: Target is not a git repository (no rollback available)"

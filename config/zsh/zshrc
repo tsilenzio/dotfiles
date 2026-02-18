@@ -70,11 +70,10 @@ fi
 # ============================================================================
 # Functions
 # ============================================================================
-srun() {
-    local secrets
-    secrets=$("$DOTFILES_DIR/scripts/secrets.sh" env --inline) || return 1
-    env $secrets "$@"
-}
+# Secrets helpers (srun, sload, _secrets_find)
+if [[ -n "$DOTFILES_DIR" && -f "$DOTFILES_DIR/config/zsh/secrets.zsh" ]]; then
+    source "$DOTFILES_DIR/config/zsh/secrets.zsh"
+fi
 
 # ============================================================================
 # Aliases

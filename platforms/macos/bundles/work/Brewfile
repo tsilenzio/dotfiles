@@ -1,6 +1,9 @@
 # Work Brewfile
 # Communication and productivity tools for work environments
 
+# Skip Gatekeeper quarantine for all cask installs
+cask_args no_quarantine: true
+
 cask "microsoft-outlook"                # Microsoft Outlook email client
 cask "slack"                            # Team communication
 cask "spotify"                          # Music streaming

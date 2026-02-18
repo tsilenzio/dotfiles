@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Pull latest dotfiles changes (creates rollback point first)
-# Usage: ./scripts/update.sh
+# Uncommitted changes are stashed and discarded by default.
+# Usage: ./scripts/update.sh [--keep]
 
 set -e
 
@@ -9,8 +10,17 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DOTFILES_DIR
 cd "$DOTFILES_DIR"
 
+# Parse flags
+KEEP_CHANGES=false
+for arg in "$@"; do
+    case "$arg" in
+        --keep) KEEP_CHANGES=true ;;
+    esac
+done
+
 # Load shared library
 source "$DOTFILES_DIR/scripts/lib/common.sh"
+
 
 if [[ ! -d ".git" ]]; then
     echo "Error: No .git directory found."
@@ -32,11 +42,25 @@ fi
 
 # Create rollback point
 create_snapshot "pre-update"
+TIMESTAMP="$SNAPSHOT_TIMESTAMP"
+TAG_NAME="$SNAPSHOT_TAG_NAME"
 
-# Check for dirty files
+# Handle uncommitted changes
+
 if [[ -n $(git status --porcelain) ]]; then
-    echo ""
-    echo "Note: Uncommitted changes will be stashed during update."
+    if [[ "$KEEP_CHANGES" == true ]]; then
+        echo ""
+        echo "Keeping uncommitted changes (--keep)."
+        PULL_FLAGS="--rebase --autostash"
+    else
+        echo ""
+        echo "Backing up uncommitted changes to git stash..."
+        git stash push -u -m "dotfiles-update/$TIMESTAMP"
+        echo "Changes saved. Recover with: git stash list"
+        PULL_FLAGS="--rebase"
+    fi
+else
+    PULL_FLAGS="--rebase"
 fi
 
 # Show incoming changes
@@ -46,11 +70,12 @@ echo "Incoming changes:"
 git log --oneline HEAD..@{u}
 echo ""
 
-# Pull with autostash
+# Pull latest
 echo "Pulling latest changes..."
-git pull --rebase --autostash
+# shellcheck disable=SC2086
+git pull $PULL_FLAGS
 
-PREV_SHORT=$(git rev-parse --short "pre-update/$SNAPSHOT_TIMESTAMP")
+PREV_SHORT=$(git rev-parse --short "$TAG_NAME")
 NEW_SHORT=$(git rev-parse --short HEAD)
 echo ""
 echo "Updated: $PREV_SHORT -> $NEW_SHORT"

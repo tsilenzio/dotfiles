@@ -25,6 +25,22 @@ install_brewfile "$BUNDLE_DIR/Brewfile"
 # Kill apps that auto-launch after installation
 killall "zoom.us" 2>/dev/null || true
 
+## Strip Gatekeeper quarantine from cask apps defined in loaded Brewfiles
+echo ""
+echo "Clearing quarantine flags..."
+cask_tokens=$(grep -h '^cask "' "$DOTFILES_DIR"/loaded/*/Brewfile 2>/dev/null | \
+    sed 's/cask "\([^"]*\)".*/\1/' | sort -u | tr '\n' ' ')
+if [[ -n "$cask_tokens" ]]; then
+    # shellcheck disable=SC2086
+    brew info --cask --json=v2 $cask_tokens 2>/dev/null | \
+        tr -d '\n' | grep -oE '"app"\s*:\s*\[[^]]*\]' | grep -oE '"[^"]+\.app"' | tr -d '"' | \
+        sort -u | while read -r app; do
+            if [[ -d "/Applications/$app" ]]; then
+                xattr -dr com.apple.quarantine "/Applications/$app" 2>/dev/null || true
+            fi
+        done
+fi
+
 ## Configure symlinks (base configs)
 echo ""
 echo "Configuring symlinks..."
@@ -38,6 +54,9 @@ if [[ -d "$BUNDLE_DIR/config" ]]; then
     echo "Applying bundle config overrides..."
     apply_config_overrides "$BUNDLE_DIR"
 fi
+
+## Restore file-type licenses (auto-import only)
+"$DOTFILES_DIR/scripts/licenses" --auto --bundle "$BUNDLE_NAME"
 
 echo ""
 echo "Core setup complete!"

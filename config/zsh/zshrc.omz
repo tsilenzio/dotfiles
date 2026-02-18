@@ -135,10 +135,30 @@ else
   bindkey "^[3;5~" delete-char
 fi
 
-# Ctrl + arrow keys to move by word
+# Ctrl + arrow keys to move by word (macOS intercepts these for Spaces by default)
 bindkey '^[[1;5C' forward-word                       # Ctrl+Right
 bindkey '^[[1;5D' backward-word                      # Ctrl+Left
 bindkey '^[[3;5~' kill-word                          # Ctrl+Delete
+
+# Ctrl+Opt + arrow keys to move by word (coarse — jumps whole paths, hyphenated-words)
+bindkey '^[[1;7C' forward-word                       # Ctrl+Opt+Right
+bindkey '^[[1;7D' backward-word                      # Ctrl+Opt+Left
+
+# Alt/Opt + arrow keys to move by word (fine — stops at /, ., -, etc.)
+_forward_word_fine()  { local WORDCHARS=''; zle forward-word }
+_backward_word_fine() { local WORDCHARS=''; zle backward-word }
+zle -N _forward_word_fine
+zle -N _backward_word_fine
+bindkey '^[[1;3C' _forward_word_fine                 # Alt+Right
+bindkey '^[[1;3D' _backward_word_fine                # Alt+Left
+
+# Opt + delete to kill word backward (fine — stops at /, ., -, etc.)
+_backward_kill_word_fine() { local WORDCHARS=''; zle backward-kill-word }
+zle -N _backward_kill_word_fine
+bindkey '^[^?' _backward_kill_word_fine               # Opt+Backspace
+
+# Ctrl+Opt + delete to kill word backward (coarse — whole paths, hyphenated-words)
+bindkey '^[^H' backward-kill-word                     # Ctrl+Opt+Backspace
 
 # Other useful bindings
 bindkey '^r' history-incremental-search-backward     # Ctrl+R for reverse history search

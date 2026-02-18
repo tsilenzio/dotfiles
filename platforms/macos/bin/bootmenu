@@ -23,7 +23,7 @@ except ImportError:
 
 DOTFILES = os.environ.get("DOTFILES_DIR", os.path.expanduser("~/.dotfiles"))
 SECRETS_SCRIPT = os.path.join(DOTFILES, "scripts/secrets.sh")
-CONFIG_PATH = os.path.join(DOTFILES, "platforms/macos/secrets/bootmenu.toml")
+CONFIG_PATH = os.path.join(DOTFILES, "platforms/macos/secrets/bootmenu.toml.age")
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -57,8 +57,10 @@ def _warn(msg):
 def load_config():
     if not os.path.isfile(SECRETS_SCRIPT):
         _die(f"secrets script not found: {SECRETS_SCRIPT}")
+    if not os.path.isfile(CONFIG_PATH):
+        _die(f"config not found: {CONFIG_PATH}")
     result = subprocess.run(
-        [SECRETS_SCRIPT, "decrypt", CONFIG_PATH],
+        [SECRETS_SCRIPT, "decrypt-raw", CONFIG_PATH, "-"],
         capture_output=True, text=True,
     )
     if result.returncode != 0:

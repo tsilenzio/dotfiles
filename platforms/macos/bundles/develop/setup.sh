@@ -39,5 +39,12 @@ if [[ -d "$BUNDLE_DIR/config" ]]; then
     apply_config_overrides "$BUNDLE_DIR"
 fi
 
+## Install mise-managed languages on first install
+if [[ "$MODE" == "install" ]] && command -v mise >/dev/null 2>&1; then
+    echo ""
+    echo "Installing mise-managed languages..."
+    mise install --yes
+fi
+
 echo ""
 echo "Develop setup complete!"

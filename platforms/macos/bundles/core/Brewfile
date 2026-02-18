@@ -1,3 +1,6 @@
+# Skip Gatekeeper quarantine for all cask installs
+cask_args no_quarantine: true
+
 # Shell & Navigation
 brew "zsh"                              # Modern shell
 brew "starship"                         # Modern prompt
@@ -20,6 +23,7 @@ brew "git"                              # Version control
 brew "fileicon"                         # Set custom app icons from CLI
 brew "wget"                             # File downloader
 brew "rsync"                            # File sync
+brew "mas"                              # Mac App Store CLI
 brew "displayplacer"                    # Monitor arrangement automation
 brew "dockutil"                         # Dock customization tool
 brew "coreutils"                        # GNU core utilities

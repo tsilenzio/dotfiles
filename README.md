@@ -23,10 +23,12 @@ git clone https://github.com/tsilenzio/dotfiles.git ~/.dotfiles
 
 - **Zsh** configuration with Starship prompt
 - **Git** config with delta diffs and GPG signing
+- **Ghostty** terminal configuration (with WezTerm fallback)
 - **Homebrew** packages organized by bundle
 - **macOS** preferences automation
 - **Dock** customization
 - **Secrets** management with age encryption and cloud backup
+- **License** management for installed applications
 
 ## Bundles
 
@@ -34,10 +36,10 @@ Bundles are modular configurations with automatic dependency resolution:
 
 | Bundle | Description | Requires |
 |--------|-------------|----------|
-| `core` | Essential tools (zsh, git, CLI utilities) | - |
-| `develop` | Development tools, IDEs, containers | core |
-| `personal` | Gaming, entertainment, MS Office | core |
-| `work` | Office communication (Outlook, Slack, Zoom) | core |
+| `core` | Essential tools and base configuration | - |
+| `develop` | Development tools, IDEs, and programming utilities | core |
+| `personal` | Gaming, entertainment, and personal apps | core |
+| `work` | Office communication and productivity | core |
 | `test` | Minimal packages for VM testing (hidden) | - |
 
 **Example combinations:**
@@ -54,10 +56,12 @@ just                  # Show available commands
 just install          # Run full installation
 just upgrade          # Re-apply bundles (packages + symlinks + preferences/dock prompts)
 just update           # Pull latest changes (creates rollback point)
+just update --keep    # Pull latest, preserve uncommitted changes
 just history          # Show available rollback points
 just rollback [id]    # Rollback to previous state
 just rollback [id] --with-brew  # Also rollback packages
 just rollback [id] --dry-run    # Preview changes
+just licenses         # Manage application licenses
 just secrets ...      # Secrets management (init, backup, restore)
 ```
 
@@ -66,8 +70,11 @@ just secrets ...      # Secrets management (init, backup, restore)
 ```
 ~/.dotfiles/
 ├── config/                    # Base configurations
-│   ├── git/
 │   ├── ghostty/
+│   ├── git/
+│   ├── gnupg/
+│   ├── mise/
+│   ├── ssh/
 │   ├── starship/
 │   ├── wezterm/
 │   └── zsh/
@@ -85,13 +92,19 @@ just secrets ...      # Secrets management (init, backup, restore)
 │       │   ├── work/
 │       │   └── test/
 │       ├── install.sh
+│       ├── preflight.sh
 │       ├── preferences.sh
 │       └── dock.sh
 ├── scripts/
+│   ├── lib/
+│   │   └── common.sh         # Shared library (logging, symlinks, bundles)
 │   ├── upgrade.sh
 │   ├── update.sh
 │   ├── rollback.sh
+│   ├── history.sh
 │   ├── secrets.sh
+│   ├── secrets-init.sh
+│   ├── licenses               # License manager (Python)
 │   └── platform.sh
 ├── secrets/                   # Encrypted secrets (age)
 ├── loaded/                    # Symlinks to active bundles (for glob discovery)
