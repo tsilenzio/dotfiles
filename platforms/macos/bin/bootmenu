@@ -1,193 +1,640 @@
 #!/usr/bin/env python3
+"""Boot menu — interactive TUI for switching between macOS APFS volumes.
+
+Reads an encrypted TOML config, evaluates rules, presents a zone-based
+menu, and reboots into the selected volume.
+
+See .docs/bootmenu.md for the full specification.
+"""
 
 import curses
+import datetime
 import os
 import plistlib
 import subprocess
 import sys
 
-ENV_VAR_SUFFIX = "_BLESS_PASSWD"
-RECOVERY = {"label": "Recovery", "type": "recovery"}
-SECRETS_SCRIPT = os.path.expanduser("~/.dotfiles/scripts/secrets.sh")
+try:
+    import tomllib
+except ImportError:
+    sys.exit("bootmenu: Python 3.11+ required (tomllib)")
 
-# Color pairs
-C_LABEL = 1
-C_RECOVERY = 2
-C_DIM = 3
+# ─── Paths ────────────────────────────────────────────────────────────────────
 
+DOTFILES = os.environ.get("DOTFILES_DIR", os.path.expanduser("~/.dotfiles"))
+SECRETS_SCRIPT = os.path.join(DOTFILES, "scripts/secrets.sh")
+CONFIG_PATH = os.path.join(DOTFILES, "platforms/macos/secrets/bootmenu.toml")
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+
+RECOVERY = {"id": "__recovery__", "label": "Recovery", "type": "recovery"}
+
+C_PRIMARY = 1    # cyan   — primary zone
+C_SECONDARY = 2  # yellow — middle zones (rule-separated)
+C_CAUTION = 3    # magenta — last zone (deprecated + recovery)
+C_DIM = 4        # gray   — inactive / hints
+
+_KNOWN_TOP = frozenset({"meta", "rules", "volumes", "defaults", "sops"})
+_KNOWN_VOL = frozenset({
+    "id", "label", "mount", "password", "category",
+    "uuid", "deprecated", "zoned_when_any",
+})
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _die(msg):
+    print(f"bootmenu: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def _warn(msg):
+    print(f"bootmenu: warning: {msg}", file=sys.stderr)
+
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+
+def load_config():
+    if not os.path.isfile(SECRETS_SCRIPT):
+        _die(f"secrets script not found: {SECRETS_SCRIPT}")
+    result = subprocess.run(
+        [SECRETS_SCRIPT, "decrypt", CONFIG_PATH],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        _die(f"decrypt failed: {result.stderr.strip()}")
+    try:
+        return tomllib.loads(result.stdout)
+    except tomllib.TOMLDecodeError as e:
+        _die(f"config parse error: {e}")
+
+
+def validate(config):
+    meta = config.get("meta", {})
+    if meta.get("version") != 1:
+        _die(f"unsupported config version: {meta.get('version')}")
+
+    rules = config.get("rules", {})
+    volumes = config.get("volumes", [])
+    defaults = config.get("defaults", [])
+
+    for k in config:
+        if k not in _KNOWN_TOP:
+            _warn(f"unknown top-level key '{k}' (ignored)")
+
+    ids, mounts, uuids = set(), set(), set()
+    for i, v in enumerate(volumes):
+        for f in ("id", "label", "mount", "password"):
+            if f not in v:
+                _die(f"volume[{i}]: missing '{f}'")
+
+        vid = v["id"]
+        if vid in ids:
+            _die(f"duplicate volume id '{vid}'")
+        ids.add(vid)
+
+        if v["mount"] in mounts:
+            _die(f"duplicate volume mount '{v['mount']}'")
+        mounts.add(v["mount"])
+
+        if v.get("uuid"):
+            if v["uuid"] in uuids:
+                _die("duplicate volume uuid")
+            uuids.add(v["uuid"])
+
+        for rn in v.get("zoned_when_any", []):
+            if rn not in rules:
+                _die(f"volume '{vid}': zoned_when_any references unknown rule '{rn}'")
+
+        if v.get("deprecated") and v.get("zoned_when_any"):
+            _warn(f"volume '{vid}': deprecated ignores zoned_when_any")
+
+        for k in v:
+            if k not in _KNOWN_VOL:
+                _warn(f"volume '{vid}': unknown field '{k}' (ignored)")
+
+    for name, rule in rules.items():
+        if "type" not in rule:
+            _die(f"rule '{name}': missing 'type'")
+        _validate_rule(name, rule)
+
+    for i, d in enumerate(defaults):
+        for f in ("when_booted", "select"):
+            if f not in d:
+                _die(f"defaults[{i}]: missing '{f}'")
+        if d["when_booted"] not in ids:
+            _die(f"defaults[{i}]: when_booted '{d['when_booted']}' unknown")
+        if d["select"] not in ids:
+            _die(f"defaults[{i}]: select '{d['select']}' unknown")
+        for rn in d.get("match_when_all", []):
+            if rn not in rules:
+                _die(f"defaults[{i}]: match_when_all references unknown rule '{rn}'")
+
+    return volumes, rules, defaults
+
+
+def _validate_rule(name, rule):
+    rt = rule["type"]
+    if rt == "time_range":
+        for f in ("start", "end"):
+            if f not in rule:
+                _die(f"rule '{name}': time_range missing '{f}'")
+    elif rt == "command":
+        has_argv = "argv" in rule
+        has_cmd = "command" in rule
+        shell = rule.get("shell", False)
+        if has_argv and has_cmd:
+            _die(f"rule '{name}': cannot have both 'argv' and 'command'")
+        if not has_argv and not has_cmd:
+            _die(f"rule '{name}': need 'argv' or 'command'")
+        if has_cmd and not shell:
+            _die(f"rule '{name}': 'command' requires shell = true")
+        if has_argv and shell:
+            _die(f"rule '{name}': 'shell' not valid with 'argv'")
+    elif rt == "file_exists":
+        if "path" not in rule:
+            _die(f"rule '{name}': file_exists missing 'path'")
+    elif rt == "env":
+        if "var" not in rule:
+            _die(f"rule '{name}': env missing 'var'")
+    elif rt == "calendar":
+        pass
+    else:
+        _warn(f"rule '{name}': unknown type '{rt}' (treated as inactive)")
+
+
+# ─── Rules Engine ─────────────────────────────────────────────────────────────
+
+def evaluate_rules(rules):
+    return {name: _eval_rule(name, rule) for name, rule in rules.items()}
+
+
+def _eval_rule(name, rule):
+    rt = rule.get("type")
+    try:
+        if rt == "time_range":
+            return _eval_time_range(rule)
+        elif rt == "command":
+            return _eval_command(name, rule)
+        elif rt == "file_exists":
+            return os.path.exists(os.path.expanduser(rule.get("path", "")))
+        elif rt == "env":
+            return bool(os.environ.get(rule.get("var", "")))
+        else:
+            return False  # unknown types warned once at validation
+    except Exception as e:
+        _warn(f"rule '{name}': {e}")
+        return False
+
+
+def _eval_time_range(rule):
+    now = datetime.datetime.now().time()
+    start = datetime.time.fromisoformat(rule["start"])
+    end = datetime.time.fromisoformat(rule["end"])
+    if start < end:
+        return start <= now < end
+    return now >= start or now < end
+
+
+def _eval_command(name, rule):
+    timeout = rule.get("timeout", 2)
+    try:
+        if rule.get("shell"):
+            r = subprocess.run(
+                rule["command"], shell=True,
+                capture_output=True, timeout=timeout,
+            )
+        else:
+            r = subprocess.run(
+                rule["argv"],
+                capture_output=True, timeout=timeout,
+            )
+        return r.returncode == 0
+    except subprocess.TimeoutExpired:
+        _warn(f"rule '{name}': timed out after {timeout}s")
+    except FileNotFoundError:
+        _warn(f"rule '{name}': executable not found")
+    except PermissionError:
+        _warn(f"rule '{name}': permission denied")
+    except Exception as e:
+        _warn(f"rule '{name}': {e}")
+    return False
+
+
+# ─── Volume Resolution ────────────────────────────────────────────────────────
+
+def get_boot_info():
+    r = subprocess.run(["diskutil", "info", "-plist", "/"], capture_output=True)
+    if r.returncode != 0:
+        return None, None
+    info = plistlib.loads(r.stdout)
+    return info.get("VolumeName"), info.get("VolumeUUID")
+
+
+def resolve_boot_volume(volumes, boot_name, boot_uuid):
+    if boot_uuid:
+        for v in volumes:
+            if v.get("uuid") == boot_uuid:
+                return v["id"]
+    if boot_name:
+        for v in volumes:
+            if v["mount"] == boot_name:
+                return v["id"]
+    return None
+
+
+def check_availability(volumes):
+    avail = {}
+    for v in volumes:
+        vid = v["id"]
+        if v.get("uuid"):
+            avail[vid] = _find_by_uuid(v["uuid"], v["mount"])
+        else:
+            path = f"/Volumes/{v['mount']}"
+            avail[vid] = path if os.path.isdir(path) else None
+    return avail
+
+
+def _find_by_uuid(target_uuid, hint_mount):
+    hint = f"/Volumes/{hint_mount}"
+    if os.path.isdir(hint) and _vol_uuid(hint) == target_uuid:
+        return hint
+    try:
+        for name in os.listdir("/Volumes"):
+            path = f"/Volumes/{name}"
+            if os.path.isdir(path) and _vol_uuid(path) == target_uuid:
+                return path
+    except OSError:
+        pass
+    return None
+
+
+def _vol_uuid(path):
+    r = subprocess.run(["diskutil", "info", "-plist", path], capture_output=True)
+    if r.returncode != 0:
+        return None
+    return plistlib.loads(r.stdout).get("VolumeUUID")
+
+
+# ─── Zone Building ────────────────────────────────────────────────────────────
+
+def build_zones(volumes, rule_results):
+    primary, middle, last = [], [], []
+
+    for vol in volumes:
+        if vol.get("deprecated"):
+            last.append(vol)
+        elif vol.get("zoned_when_any") and any(
+            rule_results.get(r) for r in vol["zoned_when_any"]
+        ):
+            middle.append(vol)
+        else:
+            primary.append(vol)
+
+    last.append(RECOVERY)
+
+    zones, zone_colors = [], []
+    if primary:
+        zones.append(primary)
+        zone_colors.append(C_PRIMARY)
+    if middle:
+        zones.append(middle)
+        zone_colors.append(C_SECONDARY)
+    zones.append(last)
+    zone_colors.append(C_CAUTION)
+
+    return zones, zone_colors
+
+
+# ─── Default Selection ────────────────────────────────────────────────────────
+
+def compute_default(zones, defaults, rule_results, booted_id, avail):
+    for d in defaults:
+        if d["when_booted"] != booted_id:
+            continue
+        mwa = d.get("match_when_all", [])
+        if mwa and not all(rule_results.get(r) for r in mwa):
+            continue
+        target = d["select"]
+        if avail.get(target) is None:
+            continue
+        pos = _find_in_zones(zones, target)
+        if pos:
+            return pos
+
+    # Fallback: first available non-booted volume, walking zones in order
+    for zi, zone in enumerate(zones):
+        for ii, item in enumerate(zone):
+            if item.get("type") == "recovery":
+                continue
+            if item.get("id") == booted_id:
+                continue
+            if avail.get(item.get("id")) is not None:
+                return zi, ii
+
+    # Last resort: Recovery
+    for zi in range(len(zones) - 1, -1, -1):
+        for ii, item in enumerate(zones[zi]):
+            if item.get("type") == "recovery":
+                return zi, ii
+
+    return 0, 0
+
+
+def _find_in_zones(zones, target_id):
+    for zi, zone in enumerate(zones):
+        for ii, item in enumerate(zone):
+            if item.get("id") == target_id:
+                return zi, ii
+    return None
+
+
+# ─── Status Bar ───────────────────────────────────────────────────────────────
+
+def status_text(item, avail, rule_results):
+    if item.get("type") == "recovery":
+        return "Recovery Mode (nvram)"
+
+    vid = item["id"]
+    mount_path = avail.get(vid) or f"/Volumes/{item['mount']}"
+    parts = [mount_path]
+
+    if avail.get(vid) is None:
+        parts.append("not mounted")
+    if item.get("zoned_when_any"):
+        active = [r for r in item["zoned_when_any"] if rule_results.get(r)]
+        if active:
+            parts.append(f"zoned by: {', '.join(active)}")
+    if item.get("deprecated"):
+        parts.append("deprecated")
+
+    return " \u00b7 ".join(parts)
+
+
+# ─── TUI ──────────────────────────────────────────────────────────────────────
 
 def setup_colors():
-    curses.set_escdelay(25)  # default 1000ms feels sluggish
+    curses.set_escdelay(25)
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(C_LABEL, curses.COLOR_CYAN, -1)
-    curses.init_pair(C_RECOVERY, curses.COLOR_YELLOW, -1)
-    curses.init_pair(C_DIM, 8, -1)  # gray
+    curses.init_pair(C_PRIMARY, curses.COLOR_CYAN, -1)
+    curses.init_pair(C_SECONDARY, curses.COLOR_YELLOW, -1)
+    curses.init_pair(C_CAUTION, curses.COLOR_MAGENTA, -1)
+    if curses.COLORS >= 16:
+        curses.init_pair(C_DIM, 8, -1)
+    else:
+        curses.init_pair(C_DIM, curses.COLOR_WHITE, -1)
 
 
-def load_secrets():
-    result = subprocess.run(
-        [SECRETS_SCRIPT, "env"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(f"Failed to load secrets: {result.stderr.strip()}", file=sys.stderr)
-        sys.exit(1)
-
-    secrets = {}
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line.startswith("export ") and "=" in line:
-            key, _, value = line[7:].partition("=")
-            secrets[key] = value
-    return secrets
+def _confirm(stdscr, item, dim):
+    """Show confirmation prompt. Returns True to proceed, False to cancel."""
+    stdscr.erase()
+    label = item["label"]
+    stdscr.addstr(1, 2, f"Boot into {label}?", curses.A_BOLD)
+    stdscr.addstr(3, 2, "enter confirm  esc cancel", dim)
+    stdscr.refresh()
+    while True:
+        key = stdscr.getch()
+        if key in (curses.KEY_ENTER, 10, 13):
+            return True
+        if key in (27, ord("q")):
+            return False
 
 
-def get_current_volume():
-    result = subprocess.run(
-        ["diskutil", "info", "-plist", "/"],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    info = plistlib.loads(result.stdout)
-    return info.get("VolumeName")
-
-
-def discover_targets(secrets):
-    try:
-        mounted = os.listdir("/Volumes")
-    except OSError:
-        return []
-
-    targets = []
-    for key in sorted(secrets):
-        if not key.endswith(ENV_VAR_SUFFIX):
-            continue
-        prefix = key[: -len(ENV_VAR_SUFFIX)].replace("_", " ")
-        for name in mounted:
-            path = os.path.join("/Volumes", name)
-            if name.lower() == prefix.lower() and os.path.isdir(path):
-                targets.append({"label": name, "mount": path, "env_var": key})
-                break
-
-    return targets
-
-
-def default_selection(targets):
-    """Pre-select the first volume that isn't the one we booted from."""
-    current = get_current_volume()
-    if current:
-        for i, t in enumerate(targets):
-            if t["label"].lower() != current.lower():
-                return i
-    return 0
-
-
-def select_target(stdscr, targets):
+def select_target(stdscr, zones, zone_colors, avail, rule_results,
+                  booted_id, booted_label, defaults):
     curses.curs_set(0)
     setup_colors()
-    selected = default_selection(targets)
-    in_recovery = False
 
+    n_zones = len(zones)
+    az, ac = compute_default(zones, defaults, rule_results, booted_id, avail)
+    cursors = [0] * n_zones
+    cursors[az] = ac
+
+    flash = None
     dim = curses.color_pair(C_DIM)
-    label_color = curses.color_pair(C_LABEL)
-    recovery_color = curses.color_pair(C_RECOVERY)
+
+    max_label = max(
+        (len(it["label"]) for z in zones for it in z), default=10
+    )
+    cw = max(max_label + 10, 30)
 
     while True:
-        stdscr.clear()
+        stdscr.erase()
+
+        # ── Header ──
         stdscr.addstr(1, 2, "Reboot to:", curses.A_BOLD)
+        if booted_label:
+            ft = f"(from {booted_label})"
+            fx = max(2 + len("Reboot to:") + 4, 2 + cw - len(ft))
+            try:
+                stdscr.addstr(1, fx, ft, dim)
+            except curses.error:
+                pass
 
-        for i, target in enumerate(targets):
-            y = i + 3
-            if not in_recovery and i == selected:
-                stdscr.addstr(y, 4, "▸ ", curses.A_BOLD)
-                stdscr.addstr(target["label"], label_color | curses.A_BOLD)
-            else:
-                stdscr.addstr(y, 4, "  ")
-                stdscr.addstr(target["label"], label_color)
+        # ── Zones ──
+        y = 3
+        for zi, zone in enumerate(zones):
+            zc = curses.color_pair(zone_colors[zi])
 
-        divider_y = len(targets) + 4
-        stdscr.addstr(divider_y, 4, "─" * 20, dim)
+            for ii, item in enumerate(zone):
+                active = zi == az
+                at_cursor = active and ii == cursors[zi]
+                is_rec = item.get("type") == "recovery"
+                is_avail = is_rec or avail.get(item.get("id")) is not None
 
-        recovery_y = divider_y + 1
-        if in_recovery:
-            stdscr.addstr(recovery_y, 4, "▸ ", curses.A_BOLD)
-            stdscr.addstr(RECOVERY["label"], recovery_color | curses.A_BOLD)
-        else:
-            stdscr.addstr(recovery_y, 4, "  ")
-            stdscr.addstr(RECOVERY["label"], dim)
+                # Cursor indicator
+                if at_cursor:
+                    stdscr.addstr(y, 2, "\u25b8 ", zc | curses.A_BOLD)
+                else:
+                    stdscr.addstr(y, 2, "  ")
 
-        hint = "↑↓ select  enter confirm  tab recovery  esc quit"
-        stdscr.addstr(recovery_y + 2, 2, hint, dim)
+                x = 4
+
+                # Unavailable marker
+                if not is_avail:
+                    stdscr.addstr(y, x, "\u2717 ", dim)
+                    x += 2
+
+                # Label
+                if not active:
+                    attr = dim
+                elif at_cursor and is_avail:
+                    attr = zc | curses.A_BOLD
+                elif at_cursor:
+                    attr = dim | curses.A_BOLD
+                elif is_avail:
+                    attr = zc
+                else:
+                    attr = dim
+
+                try:
+                    stdscr.addstr(y, x, item["label"], attr)
+                except curses.error:
+                    pass
+
+                y += 1
+
+            # Divider between zones
+            if zi < n_zones - 1:
+                try:
+                    stdscr.addstr(y, 2, "\u2500" * cw, dim)
+                except curses.error:
+                    pass
+                y += 1
+
+        # ── Status bar ──
+        y += 1
+        cur = zones[az][cursors[az]]
+        bar = flash if flash else status_text(cur, avail, rule_results)
+        try:
+            stdscr.addstr(y, 2, bar, dim)
+        except curses.error:
+            pass
+
+        # ── Hints ──
+        y += 2
+        try:
+            stdscr.addstr(
+                y, 2,
+                "tab zones  \u2191\u2193 select  enter confirm  esc quit",
+                dim,
+            )
+        except curses.error:
+            pass
+
         stdscr.refresh()
+        flash = None
 
+        # ── Input ──
         key = stdscr.getch()
+
         if key == ord("\t"):
-            in_recovery = not in_recovery
+            az = (az + 1) % n_zones
         elif key == curses.KEY_UP:
-            if in_recovery:
-                in_recovery = False
-            elif selected > 0:
-                selected -= 1
+            if cursors[az] > 0:
+                cursors[az] -= 1
         elif key == curses.KEY_DOWN:
-            if not in_recovery and selected < len(targets) - 1:
-                selected += 1
+            if cursors[az] < len(zones[az]) - 1:
+                cursors[az] += 1
         elif key in (curses.KEY_ENTER, 10, 13):
-            return RECOVERY if in_recovery else targets[selected]
+            item = zones[az][cursors[az]]
+            is_rec = item.get("type") == "recovery"
+            is_avail = is_rec or avail.get(item.get("id")) is not None
+            if is_avail:
+                if _confirm(stdscr, item, dim):
+                    return item
+            else:
+                mount = item.get("mount", "")
+                flash = f"/Volumes/{mount} \u00b7 not mounted \u2014 cannot boot"
         elif key in (27, ord("q")):
             return None
 
 
-def restart():
-    """Restart via System Events so apps get a chance to save state."""
-    subprocess.run(
-        ["osascript", "-e", 'tell app "System Events" to restart'],
-    )
+# ─── Boot Actions ─────────────────────────────────────────────────────────────
 
-
-def boot_to_recovery():
-    result = subprocess.run(
+def boot_recovery():
+    r = subprocess.run(
         ["sudo", "nvram", "recovery-boot-mode=unused"],
-        text=True,
+        capture_output=True, text=True,
     )
-    if result.returncode != 0:
-        print("Failed to set recovery boot mode.", file=sys.stderr)
-        sys.exit(1)
+    if r.returncode != 0:
+        _die(f"failed to set recovery boot mode: {r.stderr.strip()}")
 
 
-def boot_to_volume(target, password):
-    result = subprocess.run(
-        ["sudo", "bless", "-mount", target["mount"], "--setBoot", "--nextonly", "--stdinpass"],
-        input=password,
-        text=True,
+def boot_volume(target, avail):
+    mount_path = avail.get(target["id"])
+    if not mount_path:
+        _die(f"volume '{target['label']}' not available")
+    r = subprocess.run(
+        ["sudo", "bless", "-mount", mount_path,
+         "--setBoot", "--nextonly", "--stdinpass"],
+        input=target["password"] + "\n",
+        capture_output=True, text=True,
     )
-    if result.returncode != 0:
-        print("Failed to set boot volume.", file=sys.stderr)
-        sys.exit(1)
+    if r.returncode != 0:
+        _die(f"failed to set boot volume: {r.stderr.strip()}")
+
+
+def restart():
+    r = subprocess.run(
+        ["osascript", "-e", 'tell app "System Events" to restart'],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        _die(f"restart failed: {r.stderr.strip()}")
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def dry_run(volumes, rules, defaults, rule_results, booted_id,
+            booted_label, avail, zones, zone_colors):
+    print("── Boot Volume ──")
+    print(f"  booted: {booted_label or '(unknown)'} (id={booted_id or 'none'})")
+
+    print("\n── Rules ──")
+    if not rules:
+        print("  (none)")
+    for name in sorted(rules):
+        state = "active" if rule_results[name] else "inactive"
+        print(f"  {name}: {state}")
+
+    print("\n── Availability ──")
+    for v in volumes:
+        path = avail.get(v["id"])
+        state = path if path else "not mounted"
+        uuid_info = f"  uuid={v['uuid']}" if v.get("uuid") else ""
+        print(f"  {v['label']} ({v['mount']}): {state}{uuid_info}")
+
+    print("\n── Zones ──")
+    color_names = {C_PRIMARY: "primary", C_SECONDARY: "middle", C_CAUTION: "last"}
+    for zi, zone in enumerate(zones):
+        cname = color_names.get(zone_colors[zi], "?")
+        items = ", ".join(it["label"] for it in zone)
+        print(f"  zone {zi + 1} ({cname}): {items}")
+
+    dz, di = compute_default(zones, defaults, rule_results, booted_id, avail)
+    sel = zones[dz][di]
+    print(f"\n── Default Selection ──")
+    print(f"  {sel['label']} (zone {dz + 1}, position {di})")
 
 
 def main():
-    secrets = load_secrets()
-    targets = discover_targets(secrets)
+    is_dry_run = "--dry-run" in sys.argv
 
-    if not targets:
-        print(f"No targets found. Need *{ENV_VAR_SUFFIX} vars matching /Volumes/.", file=sys.stderr)
-        sys.exit(1)
+    config = load_config()
+    volumes, rules, defaults = validate(config)
 
-    target = curses.wrapper(select_target, targets)
+    rule_results = evaluate_rules(rules)
+    boot_name, boot_uuid = get_boot_info()
+    booted_id = resolve_boot_volume(volumes, boot_name, boot_uuid)
+
+    booted_label = None
+    for v in volumes:
+        if v["id"] == booted_id:
+            booted_label = v["label"]
+            break
+
+    avail = check_availability(volumes)
+    zones, zone_colors = build_zones(volumes, rule_results)
+
+    if is_dry_run:
+        dry_run(volumes, rules, defaults, rule_results, booted_id,
+                booted_label, avail, zones, zone_colors)
+        sys.exit(0)
+
+    target = curses.wrapper(
+        select_target, zones, zone_colors, avail, rule_results,
+        booted_id, booted_label, defaults,
+    )
+
     if target is None:
         sys.exit(0)
 
     if target.get("type") == "recovery":
-        boot_to_recovery()
+        boot_recovery()
     else:
-        password = secrets.get(target["env_var"])
-        if not password:
-            print(f"Error: {target['env_var']} not found in secrets.", file=sys.stderr)
-            sys.exit(1)
-        boot_to_volume(target, password)
+        boot_volume(target, avail)
 
     print(f"Rebooting into {target['label']}...")
     restart()

@@ -310,6 +310,11 @@ is_ignored() {
     [[ "$filename" == "README.md" ]] && return 0
     [[ "$filename" == "keys.txt" ]] && return 0
 
+    # Respect git's ignore rules (global + repo .gitignore)
+    if git -C "$DOTFILES_DIR" check-ignore -q "$file" 2>/dev/null; then
+        return 0
+    fi
+
     # Check .secretsignore if it exists
     if [[ -f "$ignore_file" ]]; then
         while IFS= read -r pattern || [[ -n "$pattern" ]]; do
