@@ -14,7 +14,7 @@ echo "Available rollback points:"
 echo ""
 
 # Collect tags from all rollback-related prefixes
-TAGS=$(git tag -l "pre-update/*" "pre-upgrade/*" "pre-bundle-change/*" "pre-bootstrap/*" "pre-change/*" "pre-conversion/*" "pre-rollback/*" --sort=-creatordate)
+TAGS=$(git tag -l "pre-update/*" "pre-upgrade/*" "pre-bundle-change/*" "pre-bootstrap/*" "pre-change/*" "pre-conversion/*" "pre-rollback/*" "pre-preview/*" --sort=-creatordate)
 
 if [[ -z "$TAGS" ]]; then
     echo "  No rollback points found."

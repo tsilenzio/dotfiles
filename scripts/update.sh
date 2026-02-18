@@ -22,6 +22,12 @@ done
 source "$DOTFILES_DIR/scripts/lib/common.sh"
 
 
+if [[ -f "$DOTFILES_DIR/.state/preview" ]]; then
+    current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+    echo "Note: Preview active — updating on branch: $current_branch"
+    echo ""
+fi
+
 if [[ ! -d ".git" ]]; then
     echo "Error: No .git directory found."
     echo "This dotfiles was installed via tarball. Re-run bootstrap to update:"

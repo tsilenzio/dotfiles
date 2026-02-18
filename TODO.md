@@ -155,49 +155,7 @@ Planned improvements and ideas for the dotfiles system.
 
 - [x] **Brew lock for safe testing** - `rune dev lock` / `rune dev unlock` to skip Brewfile installations during upgrades while showing what would change. Respects lock during rollback with `--with-brew`.
 
-- [ ] **PR/branch preview** - Test a PR or branch without manual git operations. Snapshots before checkout, restores original state on exit.
-
-  **Usage:**
-  ```bash
-  rune dev preview 20                # smart: bare digits = PR
-  rune dev preview feat/some-branch  # smart: contains / = branch
-  rune dev preview --pr 21           # explicit PR
-  rune dev preview --branch feat/x   # explicit branch
-  rune dev preview --commit 9d3e0d2  # explicit hash
-  rune dev preview 20               # re-run while previewing = fetch + pull new commits
-  rune dev preview 35               # different target = restore first, then preview new
-  rune dev preview --restore        # return to original branch + dirty state
-  rune dev preview --status         # show current preview + check for newer remote commits
-  ```
-
-  **Smart detection (no flags needed for 99% of cases):**
-  - Pure digits → check PR first (`gh pr view`), also check as git hash
-  - Hex-only (7+ chars) → check git hash first, also check as branch
-  - Contains `/` or non-hex letters → branch name
-  - Multiple matches → prompt to disambiguate
-  - `--pr`, `--branch`, `--commit` flags for explicit override when needed
-  - No symbol prefixes (`#`, `&`, `^`, etc.) — bash/zsh treat them as special characters
-
-  **Dirty state handling:**
-  - Before preview: `git stash push -u -m "rune-preview/<timestamp>"` to save all uncommitted changes
-  - Stash ref stored in `.state/preview` for reliable recovery
-  - Preview branch gets a completely clean working tree (no bleed from in-progress work)
-  - On `--restore`: checkout original branch, `git stash pop` to restore dirty state exactly
-
-  **State file (`.state/preview`):**
-  ```
-  branch=feat/rune-cli-and-keychain-import
-  stash=stash@{0}
-  snapshot=pre-preview/20260218-143022
-  target=pr:21
-  ```
-
-  **Behavior:**
-  - Saves original branch + stash + snapshot before checkout
-  - Restricts PR checkout to own user account (`gh pr view --json author`)
-  - Re-running same target fetches + pulls new commits (no snapshot churn)
-  - Switching targets restores first preview before starting new one
-  - `--restore` checks out original branch, pops stash, restores pre-preview state
+- [x] **PR/branch preview** - `rune dev preview` for snapshot-backed preview of PRs, branches, and commits with dirty state preservation. Smart detection, auto brew lock, activity tracking with 24h stale warnings.
 
 - [ ] **Expandable dev locks** - Extend `rune dev lock` to support `--prefs`, `--dock`, `--all` to skip preferences.sh, dock.sh, or everything except symlinks/configs during testing.
 
