@@ -221,7 +221,7 @@ prompt_yes_no() {
 }
 
 # Snapshot dirty state after tarball-to-git conversion, then clean
-# Commits local changes so `just rollback` can restore them via create_snapshot
+# Commits local changes so `rune rollback` can restore them via create_snapshot
 snapshot_and_clean() {
     local dir="$1"
     local prev_dir="$PWD"
@@ -243,7 +243,7 @@ snapshot_and_clean() {
 
     # Reset to clean state
     git reset -q --hard origin/main
-    echo "Working tree cleaned. Recover with: just rollback $SNAPSHOT_TIMESTAMP"
+    echo "Working tree cleaned. Recover with: rune rollback $SNAPSHOT_TIMESTAMP"
     cd "$prev_dir"
 }
 
@@ -369,7 +369,7 @@ if [[ "$IS_CURL" == true ]]; then
         fi
 
         echo "Running upgrade on existing installation..."
-        echo "(To update code first, run: just update)"
+        echo "(To update code first, run: rune update)"
         echo ""
         exec "$TARGET_DIR/install.sh" "${PASSTHROUGH_ARGS[@]}" < /dev/tty
     fi
