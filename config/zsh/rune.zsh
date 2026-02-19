@@ -56,7 +56,7 @@ rune() {
                 return 1
             fi
             local secrets
-            secrets=$("$dotfiles_dir/scripts/secrets.sh" env --inline) || return 1
+            secrets=$("$dotfiles_dir/scripts/secrets" env --inline) || return 1
             env $secrets "$@"
             ;;
 
@@ -87,7 +87,7 @@ rune() {
 
             while IFS= read -r f; do
                 local content
-                content=$("$dotfiles_dir/scripts/secrets.sh" decrypt-raw "$f" "-" 2>/dev/null) || continue
+                content=$("$dotfiles_dir/scripts/secrets" decrypt-raw "$f" "-" 2>/dev/null) || continue
                 while IFS= read -r line; do
                     [[ -z "$line" || "$line" == \#* ]] && continue
                     [[ "$line" == *=* ]] || continue

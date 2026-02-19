@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Platform-specific operations
-# Usage: platform.sh <command> [options]
+# Usage: platform <command> [options]
 
 set -e
 
@@ -20,12 +20,12 @@ cmd_install() {
     case "$OS" in
         macos)
             echo "Running macOS installation..."
-            "$DOTFILES_DIR/platforms/macos/install.sh"
+            "$DOTFILES_DIR/platforms/macos/install"
             ;;
         linux)
             echo "Running Linux installation..."
-            if [[ -f "$DOTFILES_DIR/platforms/linux/install.sh" ]]; then
-                "$DOTFILES_DIR/platforms/linux/install.sh"
+            if [[ -f "$DOTFILES_DIR/platforms/linux/install" ]]; then
+                "$DOTFILES_DIR/platforms/linux/install"
             else
                 echo "Linux installer not yet implemented."
                 exit 1
@@ -47,7 +47,7 @@ cmd_configure() {
             --prefs) do_prefs=true; shift ;;
             --dock) do_dock=true; shift ;;
             --help|-h)
-                echo "Usage: platform.sh configure [--prefs] [--dock]"
+                echo "Usage: platform configure [--prefs] [--dock]"
                 echo ""
                 echo "Options:"
                 echo "  --prefs  Apply system preferences"
@@ -70,12 +70,12 @@ cmd_configure() {
         case "$OS" in
             macos)
                 echo "Applying macOS preferences..."
-                "$DOTFILES_DIR/platforms/macos/preferences.sh"
+                "$DOTFILES_DIR/platforms/macos/preferences"
                 ;;
             linux)
-                if [[ -f "$DOTFILES_DIR/platforms/linux/preferences.sh" ]]; then
+                if [[ -f "$DOTFILES_DIR/platforms/linux/preferences" ]]; then
                     echo "Applying Linux preferences..."
-                    "$DOTFILES_DIR/platforms/linux/preferences.sh"
+                    "$DOTFILES_DIR/platforms/linux/preferences"
                 else
                     echo "Linux preferences not yet implemented, skipping."
                 fi
@@ -87,7 +87,7 @@ cmd_configure() {
         case "$OS" in
             macos)
                 echo "Configuring dock..."
-                "$DOTFILES_DIR/platforms/macos/dock.sh"
+                "$DOTFILES_DIR/platforms/macos/dock"
                 ;;
             linux)
                 echo "Dock configuration is macOS-only, skipping."
@@ -112,7 +112,7 @@ show_help() {
     cat << 'EOF'
 Platform-specific operations
 
-Usage: platform.sh <command> [options]
+Usage: platform <command> [options]
 
 Commands:
   info       Show detected platform info
@@ -121,11 +121,11 @@ Commands:
   link       Create symlinks for config files
 
 Examples:
-  platform.sh info
-  platform.sh install
-  platform.sh configure --prefs
-  platform.sh configure --dock
-  platform.sh link
+  platform info
+  platform install
+  platform configure --prefs
+  platform configure --dock
+  platform link
 EOF
 }
 
@@ -136,13 +136,13 @@ case "${1:-}" in
     link) shift; cmd_link "$@" ;;
     -h|--help|help) show_help ;;
     "")
-        echo "Usage: platform.sh <command> [options]"
-        echo "Run 'platform.sh --help' for more information."
+        echo "Usage: platform <command> [options]"
+        echo "Run 'platform --help' for more information."
         exit 1
         ;;
     *)
         echo "Unknown command: $1"
-        echo "Run 'platform.sh --help' for available commands."
+        echo "Run 'platform --help' for available commands."
         exit 1
         ;;
 esac

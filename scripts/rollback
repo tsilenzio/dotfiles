@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Rollback to a previous dotfiles state
-# Usage: ./scripts/rollback.sh [timestamp] [--with-brew] [--dry-run]
+# Usage: ./scripts/rollback [timestamp] [--with-brew] [--dry-run]
 
 set -e
 
@@ -223,7 +223,7 @@ echo "  To undo: just rollback $SNAPSHOT_TIMESTAMP"
 echo ""
 read -r -p "Re-apply configuration? (runs 'just upgrade') [y/N]: " RUN_UPGRADE
 if [[ "$RUN_UPGRADE" =~ ^[Yy]$ ]]; then
-    "$DOTFILES_DIR/scripts/upgrade.sh"
+    "$DOTFILES_DIR/scripts/upgrade"
 fi
 
 if [[ "${PACKAGES_CHANGED:-false}" == "true" ]]; then

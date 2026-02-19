@@ -22,7 +22,7 @@ except ImportError:
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 DOTFILES = os.environ.get("DOTFILES_DIR", os.path.expanduser("~/.dotfiles"))
-SECRETS_SCRIPT = os.path.join(DOTFILES, "scripts/secrets.sh")
+SECRETS_SCRIPT = os.path.join(DOTFILES, "scripts/secrets")
 CONFIG_PATH = os.path.join(DOTFILES, "platforms/macos/secrets/bootmenu.toml.age")
 
 # ─── Constants ────────────────────────────────────────────────────────────────

@@ -45,7 +45,7 @@ fi
 echo "Detected OS: $OS"
 
 ## Route to platform-specific installer
-PLATFORM_INSTALLER="$DOTFILES_DIR/platforms/$OS/install.sh"
+PLATFORM_INSTALLER="$DOTFILES_DIR/platforms/$OS/install"
 
 if [[ ! -f "$PLATFORM_INSTALLER" ]]; then
     echo "Error: No installer found for $OS at $PLATFORM_INSTALLER"

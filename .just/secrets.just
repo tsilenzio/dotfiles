@@ -3,7 +3,7 @@
 
 set shell := ["bash", "-cu"]
 
-SECRETS_SCRIPT := justfile_directory() / "scripts/secrets.sh"
+SECRETS_SCRIPT := justfile_directory() / "scripts/secrets"
 
 # Show secrets commands
 default:

@@ -3,7 +3,7 @@
 # Upgrade: Re-run bundle setup scripts
 # Safe to run repeatedly
 #
-# Usage: ./scripts/upgrade.sh [--select <name>...]
+# Usage: ./scripts/upgrade [--select <name>...]
 # Environment: DOTFILES_MODE - "install" or "upgrade" (default: upgrade)
 
 set -e
@@ -62,7 +62,7 @@ if [[ ${#BUNDLES[@]} -eq 0 ]]; then
         echo "Using saved bundles: ${BUNDLES[*]}"
     else
         echo "Error: No bundles specified and no saved bundles found."
-        echo "Run './install.sh' first, or use: ./scripts/upgrade.sh --select <name>"
+        echo "Run './install.sh' first, or use: ./scripts/upgrade --select <name>"
         exit 1
     fi
 else
@@ -147,29 +147,29 @@ setup_loaded_symlinks "${BUNDLES[@]}"
 if [[ "$MANAGED" != true && "$DOTFILES_MODE" == "upgrade" ]]; then
     PLATFORM_DIR="$DOTFILES_DIR/platforms/$OS"
 
-    if [[ -f "$PLATFORM_DIR/preferences.sh" || -f "$PLATFORM_DIR/dock.sh" ]]; then
+    if [[ -f "$PLATFORM_DIR/preferences" || -f "$PLATFORM_DIR/dock" ]]; then
         echo ""
         echo "Note: Re-running these scripts will reset settings to dotfiles defaults."
         echo "      Dock configuration will replace any manually added apps/icons."
         echo ""
     fi
 
-    if [[ -f "$PLATFORM_DIR/preferences.sh" ]]; then
+    if [[ -f "$PLATFORM_DIR/preferences" ]]; then
         echo -n "Re-run system preferences? [y/N]: "
         read -r PREFS_ANSWER
         if [[ "$PREFS_ANSWER" =~ ^[Yy]$ ]]; then
             echo ""
             echo "Applying system preferences..."
-            "$PLATFORM_DIR/preferences.sh"
+            "$PLATFORM_DIR/preferences"
         fi
     fi
 
-    if [[ -f "$PLATFORM_DIR/dock.sh" ]]; then
+    if [[ -f "$PLATFORM_DIR/dock" ]]; then
         echo -n "Re-run dock configuration? [y/N]: "
         read -r DOCK_ANSWER
         if [[ "$DOCK_ANSWER" =~ ^[Yy]$ ]]; then
             echo ""
-            "$PLATFORM_DIR/dock.sh"
+            "$PLATFORM_DIR/dock"
         fi
     fi
 fi

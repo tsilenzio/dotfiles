@@ -16,7 +16,7 @@ brew "jorgelbg/tap/pinentry-touchid"
 brew "age"
 brew "sops"
 
-# macOS automation (used in preferences.sh and dock.sh)
+# macOS automation (used in preferences and dock)
 brew "dockutil"
 brew "displayplacer"
 

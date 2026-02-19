@@ -5,7 +5,7 @@
 # - Resolves bundle dependencies
 # - Handles preflight (sudo caching)
 # - Installs Homebrew
-# - Delegates bundle setup to upgrade.sh
+# - Delegates bundle setup to upgrade
 
 set -e
 
@@ -268,8 +268,8 @@ fi
 printf '%s\n' "${RESOLVED_BUNDLES[@]}" > "$BUNDLES_FILE"
 
 ## Preflight: Request permissions and setup temporary sudo
-if [[ -f "$PLATFORM_DIR/preflight.sh" ]]; then
-    source "$PLATFORM_DIR/preflight.sh"
+if [[ -f "$PLATFORM_DIR/preflight" ]]; then
+    source "$PLATFORM_DIR/preflight"
     trap preflight_cleanup EXIT
 fi
 
@@ -304,8 +304,8 @@ if [[ -n "$DOTFILES_SOURCE_DIR" && -d "$DOTFILES_SOURCE_DIR/.cache/homebrew" ]];
     echo "Using local Homebrew cache: $HOMEBREW_CACHE"
 fi
 
-## Run bundle setup via upgrade.sh (--managed: install.sh handles snapshots and preferences)
-DOTFILES_MODE="$MODE" "$DOTFILES_DIR/scripts/upgrade.sh" --managed
+## Run bundle setup via upgrade (--managed: install.sh handles snapshots and preferences)
+DOTFILES_MODE="$MODE" "$DOTFILES_DIR/scripts/upgrade" --managed
 
 ## Offer secrets restore on first install
 if [[ "$MODE" == "install" ]]; then
@@ -338,7 +338,7 @@ if [[ "$MODE" == "install" ]]; then
         fi
 
         if [[ "$RUN_SECRETS" == true ]]; then
-            if "$DOTFILES_DIR/scripts/secrets.sh" restore; then
+            if "$DOTFILES_DIR/scripts/secrets" restore; then
                 echo "  Secrets restored successfully."
             else
                 echo ""
@@ -381,16 +381,16 @@ if [[ -x "$HOMEBREW_ZSH" ]]; then
 fi
 
 # Run macOS preferences
-if [[ "$RUN_PREFERENCES" == "true" && -f "$PLATFORM_DIR/preferences.sh" ]]; then
+if [[ "$RUN_PREFERENCES" == "true" && -f "$PLATFORM_DIR/preferences" ]]; then
     echo ""
     echo "Applying macOS preferences..."
-    "$PLATFORM_DIR/preferences.sh"
+    "$PLATFORM_DIR/preferences"
 fi
 
 # Run dock configuration
-if [[ "$RUN_DOCK" == "true" && -f "$PLATFORM_DIR/dock.sh" ]]; then
+if [[ "$RUN_DOCK" == "true" && -f "$PLATFORM_DIR/dock" ]]; then
     echo ""
-    "$PLATFORM_DIR/dock.sh"
+    "$PLATFORM_DIR/dock"
 fi
 
 echo ""

@@ -3,7 +3,7 @@
 
 set shell := ["bash", "-cu"]
 
-PLATFORM_SCRIPT := justfile_directory() / "scripts/platform.sh"
+PLATFORM_SCRIPT := justfile_directory() / "scripts/platform"
 
 # Show platform commands
 default:

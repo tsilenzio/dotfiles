@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Run linters (shellcheck + zsh syntax + python syntax)
+
+set -e
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# List git-aware files (tracked + untracked non-ignored) that exist on disk
+_lint_files() {
+    git -C "$DOTFILES_DIR" ls-files --cached --others --exclude-standard \
+        | grep -E "$1" \
+        | while IFS= read -r f; do
+            [[ -f "$DOTFILES_DIR/$f" ]] && echo "$DOTFILES_DIR/$f"
+        done
+}
+
+# Find extensionless scripts matching a shebang pattern
+_lint_shebang() {
+    local pattern="$1"
+    git -C "$DOTFILES_DIR" ls-files --cached --others --exclude-standard \
+        | while IFS= read -r f; do
+            local full="$DOTFILES_DIR/$f"
+            # Skip files with extensions or non-regular files
+            [[ "$f" == *.* ]] && continue
+            [[ ! -f "$full" ]] && continue
+            # Check shebang line
+            local first_line
+            first_line=$(head -1 "$full" 2>/dev/null) || continue
+            [[ "$first_line" =~ $pattern ]] && echo "$full"
+        done
+}
+
+echo "Running ShellCheck..."
+{
+    _lint_files '\.(sh|bash)$'
+    _lint_shebang '#!.*bash'
+} | sort -u | xargs shellcheck --severity=warning -x
+
+echo ""
+echo "Checking Zsh syntax..."
+_lint_files '(zshrc|zshenv|zprofile|\.zsh)$' | xargs -I{} zsh -n {}
+
+echo ""
+echo "Checking Python syntax..."
+{
+    _lint_files '\.py$'
+    _lint_shebang '#!.*python'
+} | sort -u | while IFS= read -r f; do
+    echo "  $f"
+    python3 -c "import py_compile; py_compile.compile('$f', doraise=True)"
+done
+
+echo ""
+echo "All checks passed!"

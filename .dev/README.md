@@ -9,7 +9,7 @@ These utilities are hidden from `just --list` to avoid cluttering the normal use
 On a fresh system without `just` installed:
 
 ```bash
-source .dev/init.sh   # Extracts just binary, adds to PATH
+source .dev/init   # Extracts just binary, adds to PATH
 just dev setup        # Install CLT + Homebrew from cache
 just dev bootstrap    # Run bootstrap in test mode
 ```
@@ -98,7 +98,7 @@ Copy the entire dotfiles directory (including `.cache/`) to your test VM.
 ### 3. Run Setup (in VM)
 
 ```bash
-source .dev/init.sh  # Makes 'just' available (extracts from cache)
+source .dev/init  # Makes 'just' available (extracts from cache)
 just dev setup       # Installs CLT and Homebrew from cache (offline)
 just dev bootstrap   # Runs bootstrap (needs network for formula metadata, uses cache for bottles)
 ```
@@ -157,15 +157,16 @@ Once metadata is fetched, cached bottles are used for installation, avoiding the
 ```
 .dev/
 ├── README.md      # This file
-├── init.sh        # Initialize dev environment (source this first)
+├── init           # Initialize dev environment (source this first)
 ├── justfile       # Dev-specific recipes (thin wrappers)
 └── scripts/
     ├── lib/
     │   └── common.sh  # Shared library (logging, paths)
-    ├── setup.sh       # Installs CLT + Homebrew from .cache/
-    ├── prefetch.sh    # Pre-fetches Homebrew packages
-    ├── test.sh        # Test bootstrap (local or curl mode)
-    └── lint.sh        # Run shellcheck + zsh syntax checks
+    ├── setup          # Installs CLT + Homebrew from .cache/
+    ├── prefetch       # Pre-fetches Homebrew packages
+    ├── preview        # Preview a PR, branch, or commit
+    ├── test           # Test bootstrap (local or curl mode)
+    └── lint           # Run shellcheck + zsh + python syntax checks
 
 .cache/
 ├── .gitkeep                            # Documents what goes here
@@ -182,5 +183,5 @@ Once metadata is fetched, cached bottles are used for installation, avoiding the
   - just: `just-*-aarch64-apple-darwin.tar.gz` or `just-aarch64-apple-darwin.tar.gz`
   - CLT: `Command_Line_Tools_for_Xcode_*.dmg` or `Command_Line_Tools.dmg`
   - Homebrew: `Homebrew-*.pkg` or `Homebrew.pkg`
-- **init.sh**: Must be sourced (not executed) so PATH changes persist in your shell. If `just` is already available, it skips extraction. If not cached, it downloads the latest release from GitHub.
-- **Sudo handling**: Both `setup.sh` and the install scripts use `preflight.sh` to request permissions upfront and create a temporary passwordless sudo entry. This is automatically cleaned up when each script exits.
+- **init**: Must be sourced (not executed) so PATH changes persist in your shell. If `just` is already available, it skips extraction. If not cached, it downloads the latest release from GitHub.
+- **Sudo handling**: Both `setup` and the install scripts use `preflight` to request permissions upfront and create a temporary passwordless sudo entry. This is automatically cleaned up when each script exits.
