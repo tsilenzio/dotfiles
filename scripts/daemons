@@ -1,0 +1,569 @@
+#!/usr/bin/env python3
+"""Launch daemon/agent manager.
+
+Discovers daemon scripts from three levels (most specific wins):
+  1. Bundle:   platforms/<os>/bundles/<name>/daemons/
+  2. Platform: platforms/<os>/daemons/
+  3. Global:   scripts/daemons/
+
+Tracks installed state in .state/daemons/<label> files. Detects orphans
+(daemon still installed but script removed from git) and offers cleanup.
+
+Each daemon script must support these subcommands:
+  info       key=value metadata (name, description, label, type, plist, files)
+  install    Install and load the daemon/agent
+  uninstall  Remove the daemon/agent
+
+Usage:
+  daemons                          Interactive TUI
+  daemons <daemon> <command>       Delegate to a daemon script directly
+"""
+
+import curses
+import os
+import plistlib
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+DOTFILES_DIR = Path(__file__).resolve().parent.parent
+PLATFORM = "macos" if os.uname().sysname == "Darwin" else "linux"
+STATE_DIR = DOTFILES_DIR / ".state" / "daemons"
+LABEL_PREFIX = "com.dotfiles."
+
+# Plist directories to scan for orphans
+PLIST_DIRS = [
+    Path("/Library/LaunchDaemons"),
+    Path.home() / "Library" / "LaunchAgents",
+]
+
+
+@dataclass
+class Daemon:
+    script: Optional[Path]  # None for orphans
+    scope: str
+    name: str = ""
+    description: str = ""
+    label: str = ""
+    dtype: str = "daemon"
+    plist: str = ""
+    files: str = ""  # comma-separated installed file paths
+    installed: bool = False
+    enabled: bool = False
+    was_installed: bool = False
+    orphan: bool = False
+
+
+# --- Helpers ---
+
+def run_cmd(cmd: List[str]) -> str:
+    try:
+        return subprocess.check_output(
+            cmd, stderr=subprocess.DEVNULL, text=True
+        ).strip()
+    except Exception:
+        return ""
+
+
+def parse_kv(text: str) -> Dict[str, str]:
+    result = {}
+    for line in text.splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            result[k.strip()] = v.strip()
+    return result
+
+
+def is_loaded(label: str) -> bool:
+    try:
+        subprocess.check_call(
+            ["launchctl", "list", label],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+# --- State files (.state/daemons/<label>) ---
+
+def state_path(label: str) -> Path:
+    return STATE_DIR / label
+
+
+def write_state(d: Daemon):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"label={d.label}",
+        f"name={d.name}",
+        f"type={d.dtype}",
+        f"scope={d.scope}",
+        f"script={d.script or ''}",
+        f"plist={d.plist}",
+        f"files={d.files}",
+        f"installed_at={datetime.now(timezone.utc).isoformat()}",
+    ]
+    state_path(d.label).write_text("\n".join(lines) + "\n")
+
+
+def remove_state(label: str):
+    p = state_path(label)
+    if p.exists():
+        p.unlink()
+
+
+def read_all_state() -> Dict[str, Dict[str, str]]:
+    """Read all state files. Returns {label: {key: value}}."""
+    result = {}
+    if not STATE_DIR.is_dir():
+        return result
+    for f in STATE_DIR.iterdir():
+        if f.is_file() and not f.name.startswith("."):
+            kv = parse_kv(f.read_text())
+            if "label" in kv:
+                result[kv["label"]] = kv
+    return result
+
+
+# --- Discovery ---
+
+def get_daemon_dirs() -> List[Tuple[Path, str]]:
+    dirs: List[Tuple[Path, str]] = []
+
+    bundles_file = DOTFILES_DIR / ".bundles"
+    if bundles_file.exists():
+        for line in bundles_file.read_text().splitlines():
+            bundle = line.strip()
+            if not bundle:
+                continue
+            d = DOTFILES_DIR / "platforms" / PLATFORM / "bundles" / bundle / "daemons"
+            if d.is_dir():
+                dirs.append((d, f"bundle:{bundle}"))
+
+    d = DOTFILES_DIR / "platforms" / PLATFORM / "daemons"
+    if d.is_dir():
+        dirs.append((d, "platform"))
+
+    d = DOTFILES_DIR / "scripts" / "daemons"
+    if d.is_dir():
+        dirs.append((d, "global"))
+
+    return dirs
+
+
+def discover_daemons() -> List[Daemon]:
+    seen_labels: Dict[str, Daemon] = {}
+    daemons: List[Daemon] = []
+
+    # Discover from script directories
+    for daemon_dir, scope in get_daemon_dirs():
+        for script in sorted(daemon_dir.iterdir()):
+            if not script.is_file() or script.name.startswith("."):
+                continue
+            if not os.access(script, os.X_OK) and script.suffix not in (".sh", ".py", ".js"):
+                continue
+
+            info_out = run_cmd([str(script), "info"])
+            if not info_out:
+                continue
+
+            info = parse_kv(info_out)
+            if "name" not in info or "label" not in info:
+                continue
+
+            label = info["label"]
+            if label in seen_labels:
+                continue
+
+            installed = is_loaded(label)
+            d = Daemon(
+                script=script,
+                scope=scope,
+                name=info.get("name", script.stem),
+                description=info.get("description", ""),
+                label=label,
+                dtype=info.get("type", "daemon"),
+                plist=info.get("plist", ""),
+                files=info.get("files", ""),
+                installed=installed,
+                enabled=installed,
+                was_installed=installed,
+            )
+            seen_labels[label] = d
+            daemons.append(d)
+
+    # Detect orphans: state files with no matching discovered script
+    for label, state in read_all_state().items():
+        if label in seen_labels:
+            continue
+
+        loaded = is_loaded(label)
+        if not loaded:
+            # Script gone AND not loaded — just clean up stale state
+            remove_state(label)
+            continue
+
+        # Orphan: still loaded but script is gone
+        daemons.append(Daemon(
+            script=None,
+            scope=state.get("scope", "unknown"),
+            name=state.get("name", label) + " (orphan)",
+            description="Script removed — uninstall to clean up",
+            label=label,
+            dtype=state.get("type", "daemon"),
+            plist=state.get("plist", ""),
+            files=state.get("files", ""),
+            installed=True,
+            enabled=True,
+            was_installed=True,
+            orphan=True,
+        ))
+
+    # Pass 3: Scan plist directories for com.dotfiles.* entries with no
+    # matching script or state file (both were deleted from git)
+    seen_pass12 = {d.label for d in daemons}
+    for plist_dir in PLIST_DIRS:
+        if not plist_dir.is_dir():
+            continue
+        for plist_file in plist_dir.iterdir():
+            if not plist_file.name.endswith(".plist"):
+                continue
+            try:
+                with open(plist_file, "rb") as f:
+                    pdata = plistlib.load(f)
+            except Exception:
+                continue
+            label = pdata.get("Label", "")
+            if not label.startswith(LABEL_PREFIX):
+                continue
+            if label in seen_pass12:
+                continue
+
+            loaded = is_loaded(label)
+            if not loaded:
+                continue
+
+            daemons.append(Daemon(
+                script=None,
+                scope="unknown",
+                name=label.removeprefix(LABEL_PREFIX) + " (orphan)",
+                description="Script and state removed — uninstall to clean up",
+                label=label,
+                dtype="agent" if "LaunchAgents" in str(plist_dir) else "daemon",
+                plist=str(plist_file),
+                files="",
+                installed=True,
+                enabled=True,
+                was_installed=True,
+                orphan=True,
+            ))
+
+    return daemons
+
+
+def find_script(name: str) -> Optional[Path]:
+    """Find a daemon script by name or label."""
+    # Try by script name first
+    for daemon_dir, _ in get_daemon_dirs():
+        for script in daemon_dir.iterdir():
+            if script.stem == name and script.is_file():
+                return script
+
+    # Try by label (e.g., com.dotfiles.spotlight)
+    stripped = name.removeprefix(LABEL_PREFIX) if name.startswith(LABEL_PREFIX) else None
+    if stripped:
+        for daemon_dir, _ in get_daemon_dirs():
+            for script in daemon_dir.iterdir():
+                if script.stem == stripped and script.is_file():
+                    return script
+
+    # Try by label via info output (handles scripts whose name != label suffix)
+    for daemon_dir, _ in get_daemon_dirs():
+        for script in sorted(daemon_dir.iterdir()):
+            if not script.is_file() or script.name.startswith("."):
+                continue
+            info_out = run_cmd([str(script), "info"])
+            if not info_out:
+                continue
+            info = parse_kv(info_out)
+            if info.get("label") == name:
+                return script
+
+    return None
+
+
+def all_script_names() -> List[str]:
+    names: List[str] = []
+    seen: set = set()
+    for daemon_dir, _ in get_daemon_dirs():
+        for script in sorted(daemon_dir.iterdir()):
+            if script.is_file() and not script.name.startswith(".") and script.stem not in seen:
+                names.append(script.stem)
+                seen.add(script.stem)
+    return names
+
+
+# --- Orphan cleanup ---
+
+def cleanup_orphan(d: Daemon):
+    """Generic uninstall using state file info when script is gone."""
+    label = d.label
+    dtype = d.dtype
+
+    print(f"Cleaning up orphan: {label}")
+
+    # Unload
+    if dtype == "agent":
+        uid = os.getuid()
+        subprocess.call(["launchctl", "bootout", f"gui/{uid}/{label}"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        subprocess.call(["sudo", "launchctl", "bootout", f"system/{label}"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Remove plist
+    plist = d.plist
+    if not plist:
+        if dtype == "agent":
+            plist = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+        else:
+            plist = f"/Library/LaunchDaemons/{label}.plist"
+
+    if os.path.exists(plist):
+        print(f"  Removing plist: {plist}")
+        if dtype == "agent":
+            os.unlink(plist)
+        else:
+            subprocess.call(["sudo", "rm", "-f", plist])
+
+    # Remove installed files
+    if d.files:
+        for fpath in d.files.split(","):
+            fpath = fpath.strip()
+            if fpath and os.path.exists(fpath):
+                print(f"  Removing: {fpath}")
+                subprocess.call(["sudo", "rm", "-f", fpath])
+
+    # Remove state
+    remove_state(label)
+    print(f"  Orphan cleaned up.")
+
+
+# --- TUI ---
+
+def draw(stdscr, daemons: List[Daemon]) -> Optional[List[Daemon]]:
+    curses.curs_set(0)
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_GREEN, -1)
+    curses.init_pair(2, curses.COLOR_CYAN, -1)
+    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(4, curses.COLOR_YELLOW, -1)
+    curses.init_pair(5, curses.COLOR_RED, -1)
+
+    C_OK = curses.color_pair(1)
+    C_HEAD = curses.color_pair(2)
+    C_SEL = curses.color_pair(3)
+    C_WARN = curses.color_pair(4)
+    C_ERR = curses.color_pair(5)
+
+    cur = 0
+
+    while True:
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+
+        stdscr.addstr(0, 2, "Launch Daemon / Agent Manager", C_HEAD | curses.A_BOLD)
+        stdscr.addstr(2, 2, "↑↓ navigate · Space toggle · Enter apply · q quit",
+                      curses.A_DIM)
+
+        y = 4
+        hdr = f"  {'Service':<28}{'Scope':<16}{'Type':<10}{'Status'}"
+        stdscr.addstr(y, 0, hdr[:w - 1], curses.A_DIM)
+        y += 1
+        stdscr.addstr(y, 0, ("  " + "─" * min(68, w - 4))[:w - 1], curses.A_DIM)
+        y += 1
+
+        for i, d in enumerate(daemons):
+            if y >= h - 3:
+                break
+
+            selected = i == cur
+            box = "[x]" if d.enabled else "[ ]"
+            status = "installed" if d.installed else "not installed"
+
+            if d.enabled != d.was_installed:
+                status += " *"
+
+            line = f"  {box} {d.name:<24}{d.scope:<16}{d.dtype:<10}{status}"
+            line = line[:w - 1]
+
+            if selected:
+                attr = C_SEL | curses.A_BOLD
+            elif d.orphan:
+                attr = C_ERR
+            elif d.enabled:
+                attr = C_OK
+            else:
+                attr = 0
+
+            stdscr.addstr(y, 0, line, attr)
+
+            if selected and d.description:
+                y += 1
+                if y < h - 3:
+                    desc = f"      {d.description}"
+                    stdscr.addstr(y, 0, desc[:w - 1],
+                                  C_ERR if d.orphan else curses.A_DIM)
+            y += 1
+
+        # Footer
+        fy = min(y + 1, h - 2)
+        changes = sum(1 for d in daemons if d.enabled != d.was_installed)
+        orphans = sum(1 for d in daemons if d.orphan and d.enabled)
+
+        msgs = []
+        if changes > 0:
+            msgs.append(f"{changes} pending change(s)")
+        if orphans > 0:
+            msgs.append(f"{orphans} orphan(s) — uncheck to clean up")
+
+        if msgs and fy < h:
+            msg = "  ·  ".join(msgs)
+            stdscr.addstr(fy, 2, msg, C_WARN)
+
+        stdscr.refresh()
+        key = stdscr.getch()
+
+        if key in (ord("q"), 27):
+            return None
+        elif key == curses.KEY_UP and cur > 0:
+            cur -= 1
+        elif key == curses.KEY_DOWN and cur < len(daemons) - 1:
+            cur += 1
+        elif key == ord(" "):
+            daemons[cur].enabled = not daemons[cur].enabled
+        elif key in (curses.KEY_ENTER, 10, 13):
+            return daemons
+
+
+# --- Apply ---
+
+def apply_changes(daemons: List[Daemon]):
+    changes = [d for d in daemons if d.enabled != d.was_installed]
+
+    if not changes:
+        print("No changes to apply.")
+        return
+
+    for d in changes:
+        if d.enabled:
+            # Install
+            if d.script:
+                print(f"\nInstalling: {d.name} ({d.scope})")
+                print("-" * 40)
+                ret = subprocess.call(["sudo", str(d.script), "install", "--yes"])
+                if ret == 0:
+                    write_state(d)
+                else:
+                    print(f"Warning: install exited with code {ret}")
+        else:
+            # Uninstall
+            if d.orphan:
+                print(f"\nCleaning up orphan: {d.name}")
+                print("-" * 40)
+                cleanup_orphan(d)
+            elif d.script:
+                print(f"\nRemoving: {d.name} ({d.scope})")
+                print("-" * 40)
+                ret = subprocess.call(["sudo", str(d.script), "uninstall", "--yes"])
+                if ret == 0:
+                    remove_state(d.label)
+                else:
+                    print(f"Warning: uninstall exited with code {ret}")
+
+
+# --- CLI ---
+
+def cmd_list():
+    """List all discovered daemons with status."""
+    daemons = discover_daemons()
+    if not daemons:
+        print("No daemons found.")
+        dirs = get_daemon_dirs()
+        if dirs:
+            print("Searched:")
+            for d, scope in dirs:
+                print(f"  {d}  ({scope})")
+        else:
+            print(f"Add daemon scripts to: {DOTFILES_DIR / 'scripts' / 'daemons'}/")
+        return
+
+    name_w = max(len(d.name) for d in daemons) + 2
+    for d in daemons:
+        status = "installed" if d.installed else "not installed"
+        if d.orphan:
+            status = "orphan"
+        print(f"  {d.name:<{name_w}}{d.scope:<16}{d.dtype:<10}{status}")
+
+
+def delegate(args: List[str]):
+    name = args[0]
+    sub_args = args[1:] if len(args) > 1 else []
+
+    script = find_script(name)
+    if script:
+        os.execvp(str(script), [str(script)] + sub_args)
+
+    print(f"Unknown daemon: {name}", file=sys.stderr)
+    available = all_script_names()
+    if available:
+        print(f"Available: {', '.join(available)}", file=sys.stderr)
+    sys.exit(1)
+
+
+def usage():
+    print("Launch daemon/agent manager")
+    print("")
+    print("Usage:")
+    print("  daemons                          Interactive TUI")
+    print("  daemons list                     List daemons and status")
+    print("  daemons <name> <command> [args]  Delegate to a daemon script")
+    print("")
+    print("Examples:")
+    print("  daemons spotlight status         Show spotlight indexing state")
+    print("  daemons spotlight install        Install the spotlight daemon")
+    print("")
+    available = all_script_names()
+    if available:
+        print(f"Available daemons: {', '.join(available)}")
+
+
+def main():
+    args = sys.argv[1:]
+
+    if not args:
+        daemons = discover_daemons()
+        if not daemons:
+            usage()
+            sys.exit(1)
+        result = curses.wrapper(draw, daemons)
+        if result is None:
+            print("Cancelled.")
+            sys.exit(0)
+        apply_changes(result)
+        return
+
+    if args[0] == "list":
+        cmd_list()
+    elif args[0] in ("help", "--help", "-h"):
+        usage()
+    else:
+        delegate(args)
+
+
+if __name__ == "__main__":
+    main()
