@@ -14,11 +14,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: '.'
-          severity: warning
-          ignore_names: ".zsh* zshrc* zshenv* zprofile* zlogin* zlogout* *.zsh"
+        run: |
+          files=()
+          # Find .sh/.bash files (exclude zsh files handled separately)
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find . -type f \( -name "*.sh" -o -name "*.bash" \) \
+            ! -name "*.zsh" ! -name ".zsh*" ! -name "zshrc*" ! -name "zshenv*" \
+            ! -name "zprofile*" ! -name "zlogin*" ! -name "zlogout*" -print0)
+          # Find extensionless files with bash shebang
+          while IFS= read -r -d '' file; do
+            [[ "$(basename "$file")" == *.* ]] && continue
+            head -1 "$file" 2>/dev/null | grep -qE '#!.*bash' && files+=("$file")
+          done < <(find . -type f -executable -print0)
+          echo "Checking ${#files[@]} files..."
+          shellcheck --severity=warning -x "${files[@]}"
 
   zsh-syntax:
     name: Zsh Syntax
@@ -39,4 +49,27 @@ jobs:
           for file in "${files[@]}"; do
             echo "Checking $file..."
             zsh -n "$file"
+          done
+
+  python-syntax:
+    name: Python Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Python syntax
+        run: |
+          files=()
+          # Find .py files
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find . -type f -name "*.py" -print0)
+          # Find extensionless files with python shebang
+          while IFS= read -r -d '' file; do
+            [[ "$(basename "$file")" == *.* ]] && continue
+            head -1 "$file" 2>/dev/null | grep -qE '#!.*python' && files+=("$file")
+          done < <(find . -type f -executable -print0)
+          for file in "${files[@]}"; do
+            echo "Checking $file..."
+            python3 -c "import py_compile; py_compile.compile('$file', doraise=True)"
           done

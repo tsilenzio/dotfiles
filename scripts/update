@@ -2,7 +2,7 @@
 
 # Pull latest dotfiles changes (creates rollback point first)
 # Uncommitted changes are stashed and discarded by default.
-# Usage: ./scripts/update.sh [--keep]
+# Usage: ./scripts/update [--keep]
 
 set -e
 

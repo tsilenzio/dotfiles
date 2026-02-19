@@ -9,6 +9,9 @@ loaded
 .cache/*
 !.cache/.gitkeep
 
+# Python bytecode
+__pycache__/
+
 # macOS system files
 .DS_Store
 ._*

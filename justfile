@@ -19,23 +19,27 @@ install:
 
 # Pull latest changes (creates rollback point first)
 update *args:
-    ./scripts/update.sh {{args}}
+    ./scripts/update {{args}}
 
 # Apply configuration (packages + symlinks)
 upgrade:
-    ./scripts/upgrade.sh
+    ./scripts/upgrade
 
 # Show available rollback points
 history:
-    ./scripts/history.sh
+    ./scripts/history
 
 # Rollback to a previous state
 rollback *args:
-    ./scripts/rollback.sh {{args}}
+    ./scripts/rollback {{args}}
 
 # Manage application licenses
 licenses *args:
     ./scripts/licenses {{args}}
+
+# Manage launch daemons and agents
+daemons *args:
+    ./scripts/daemons {{args}}
 
 # Dev utilities for faster testing (hidden from `just --list`).
 # Uses a separate justfile + [private] recipe because:

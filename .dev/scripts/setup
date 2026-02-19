@@ -18,8 +18,8 @@ create_logger "dev-setup"
 export HOMEBREW_NO_AUTO_UPDATE=1
 
 # Run preflight (sets up sudo, triggers permission dialogs)
-if [[ -f "$PLATFORM_DIR/preflight.sh" ]]; then
-    source "$PLATFORM_DIR/preflight.sh"
+if [[ -f "$PLATFORM_DIR/preflight" ]]; then
+    source "$PLATFORM_DIR/preflight"
     trap preflight_cleanup EXIT
 fi
 

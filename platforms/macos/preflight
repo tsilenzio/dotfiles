@@ -4,7 +4,7 @@
 # Must be SOURCED (not executed) so functions are available to caller
 #
 # Usage in calling script:
-#   source "$PLATFORM_DIR/preflight.sh"
+#   source "$PLATFORM_DIR/preflight"
 #   trap preflight_cleanup EXIT
 
 # Avoid running twice if already done this session

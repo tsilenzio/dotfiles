@@ -13,15 +13,15 @@ default:
 
 # Install CLT and Homebrew from .cache/ (offline installers)
 setup:
-    "{{SCRIPTS_DIR}}/setup.sh"
+    "{{SCRIPTS_DIR}}/setup"
 
 # Pre-fetch Homebrew packages: test (default), work, personal, all
 prefetch *args:
-    "{{SCRIPTS_DIR}}/prefetch.sh" {{args}}
+    "{{SCRIPTS_DIR}}/prefetch" {{args}}
 
 # Test bootstrap: local (default) or curl (emulates curl|bash)
 bootstrap *args:
-    "{{SCRIPTS_DIR}}/test.sh" {{args}}
+    "{{SCRIPTS_DIR}}/test" {{args}}
 
 # Run install with test bundle visible
 install:
@@ -29,7 +29,7 @@ install:
 
 # Run linters (shellcheck + zsh syntax)
 lint:
-    "{{SCRIPTS_DIR}}/lint.sh"
+    "{{SCRIPTS_DIR}}/lint"
 
 # Lock brew operations (skip installs during upgrade, show diffs instead)
 lock:
@@ -45,7 +45,7 @@ unlock:
 
 # Preview a PR, branch, or commit (snapshot + checkout)
 preview *args:
-    "{{SCRIPTS_DIR}}/preview.sh" {{args}}
+    "{{SCRIPTS_DIR}}/preview" {{args}}
 
 # Show dev lock status
 status:

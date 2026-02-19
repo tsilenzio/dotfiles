@@ -3,7 +3,7 @@
 set -e
 
 # Show available rollback points
-# Usage: ./scripts/history.sh
+# Usage: ./scripts/history
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DOTFILES_DIR" || exit 1

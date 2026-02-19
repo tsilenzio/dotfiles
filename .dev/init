@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 # Initialize dev environment - extracts just binary if needed
-# Usage: source .dev/init.sh
+# Usage: source .dev/init
 #
 # This script should be SOURCED, not executed, so PATH changes persist:
-#   source .dev/init.sh
+#   source .dev/init
 #   just dev setup
 
 # Detect if being sourced or executed

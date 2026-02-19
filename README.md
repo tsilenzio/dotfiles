@@ -91,21 +91,22 @@ just secrets ...      # Secrets management (init, backup, restore)
 │       │   ├── personal/
 │       │   ├── work/
 │       │   └── test/
-│       ├── install.sh
-│       ├── preflight.sh
-│       ├── preferences.sh
-│       └── dock.sh
+│       ├── install              # macOS platform installer
+│       ├── preflight            # Sudo caching / preflight checks
+│       ├── preferences          # macOS system preferences
+│       └── dock                 # Dock layout configuration
 ├── scripts/
 │   ├── lib/
 │   │   └── common.sh         # Shared library (logging, symlinks, bundles)
-│   ├── upgrade.sh
-│   ├── update.sh
-│   ├── rollback.sh
-│   ├── history.sh
-│   ├── secrets.sh
-│   ├── secrets-init.sh
+│   ├── upgrade                # Re-apply bundles
+│   ├── update                 # Pull + snapshot
+│   ├── rollback               # Revert to snapshot
+│   ├── history                # List rollback points
+│   ├── secrets                # Secrets management (backup/restore/encrypt)
+│   ├── secrets-init           # Initialize encryption
 │   ├── licenses               # License manager (Python)
-│   └── platform.sh
+│   ├── daemons                # Daemon/agent manager (Python)
+│   └── platform               # Platform operations (configure/link)
 ├── secrets/                   # Encrypted secrets (age)
 ├── loaded/                    # Symlinks to active bundles (for glob discovery)
 ├── bootstrap.sh
