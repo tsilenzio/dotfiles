@@ -48,10 +48,28 @@ _ok()    { echo -e "${_C_GREEN}[ok]${_C_NC} $1"; _syslog "ok: $1"; }
 _warn()  { echo -e "${_C_YELLOW}[warn]${_C_NC} $1"; _syslog "warn: $1"; }
 _err()   { echo -e "${_C_RED}[error]${_C_NC} $1"; _syslog "error: $1"; }
 
+# Source shared lib for interactive features (gum TUI).
+# Skipped when running as installed daemon (/usr/local/libexec/).
+if [[ -t 1 && -f "$DOTFILES_DIR/scripts/lib/common.sh" ]]; then
+    source "$DOTFILES_DIR/scripts/lib/common.sh"
+fi
+
 # --- Config helpers ---
 
 ensure_state_dir() {
     [[ -d "$STATE_DIR" ]] || mkdir -p "$STATE_DIR"
+}
+
+# Fix state dir ownership after root writes.
+# The daemon and install both run as root but config must stay user-writable.
+_fix_state_ownership() {
+    if [[ "$(id -u)" == "0" ]]; then
+        local owner
+        owner=$(stat -f '%Su' "$DOTFILES_DIR")
+        if [[ "$owner" != "root" ]]; then
+            chown -R "$owner" "$STATE_DIR"
+        fi
+    fi
 }
 
 # Get Volume UUID via diskutil. Returns empty string if unavailable.
@@ -66,8 +84,9 @@ config_get() {
     local uuid="$1"
     [[ -f "$CONFIG_FILE" ]] || return 0
     while IFS='=' read -r key value; do
-        [[ "$key" == "$uuid" ]] && { echo "$value"; return; }
+        [[ "$key" == "$uuid" ]] && { echo "$value"; return 0; }
     done < "$CONFIG_FILE"
+    return 0
 }
 
 # Write a key to config file (creates or updates)
@@ -110,14 +129,37 @@ label_get() {
     local uuid="$1"
     [[ -f "$LABELS_FILE" ]] || return 0
     while IFS='=' read -r key value; do
-        [[ "$key" == "$uuid" ]] && { echo "$value"; return; }
+        [[ "$key" == "$uuid" ]] && { echo "$value"; return 0; }
     done < "$LABELS_FILE"
+    return 0
 }
 
 # --- Volume helpers ---
 
 is_macos_system_volume() {
     [[ -f "$1/System/Library/CoreServices/SystemVersion.plist" ]]
+}
+
+# Check if a volume is the currently booted macOS (compare device IDs)
+is_boot_volume() {
+    local vol="$1"
+    local name="${vol%/}"
+    name=$(basename "$name")
+    local data="/Volumes/${name} - Data"
+
+    # Compare data partition device ID with /System/Volumes/Data
+    if [[ -d "$data" ]]; then
+        local data_dev boot_data_dev
+        data_dev=$(stat -f '%d' "$data" 2>/dev/null) || return 1
+        boot_data_dev=$(stat -f '%d' "/System/Volumes/Data" 2>/dev/null) || return 1
+        [[ "$data_dev" == "$boot_data_dev" ]]
+    else
+        # No data partition — compare system volume device with /
+        local vol_dev boot_dev
+        vol_dev=$(stat -f '%d' "$vol" 2>/dev/null) || return 1
+        boot_dev=$(stat -f '%d' "/" 2>/dev/null) || return 1
+        [[ "$vol_dev" == "$boot_dev" ]]
+    fi
 }
 
 get_macos_version() {
@@ -167,6 +209,7 @@ find_managed_volumes() {
     for vol in /Volumes/*/; do
         [[ ! -d "$vol" ]] && continue
         is_macos_system_volume "$vol" || continue
+        is_boot_volume "$vol" && continue
         local name data version
         name=$(basename "$vol")
         data="/Volumes/${name} - Data"
@@ -177,6 +220,19 @@ find_managed_volumes() {
             echo "${vol%/}||${version}"
         fi
     done
+}
+
+# Get boot volume name for display purposes
+get_boot_volume_name() {
+    for vol in /Volumes/*/; do
+        [[ ! -d "$vol" ]] && continue
+        is_macos_system_volume "$vol" || continue
+        if is_boot_volume "$vol"; then
+            basename "${vol%/}"
+            return 0
+        fi
+    done
+    echo "Macintosh HD"
 }
 
 # --- Commands ---
@@ -208,8 +264,8 @@ cmd_apply() {
 
         # Get UUID from data volume (primary) or system volume (fallback)
         uuid=""
-        [[ -n "$data_vol" ]] && uuid=$(get_volume_uuid "$data_vol")
-        [[ -z "$uuid" ]] && uuid=$(get_volume_uuid "$sys_vol")
+        if [[ -n "$data_vol" ]]; then uuid=$(get_volume_uuid "$data_vol") || true; fi
+        if [[ -z "$uuid" ]]; then uuid=$(get_volume_uuid "$sys_vol") || true; fi
 
         if [[ -z "$uuid" ]]; then
             _warn "$name: no Volume UUID — skipping"
@@ -232,12 +288,12 @@ cmd_apply() {
         case "$mode" in
             on)
                 set_indexing "$sys_vol" "on"
-                [[ -n "$data_vol" ]] && set_indexing "$data_vol" "on"
+                if [[ -n "$data_vol" ]]; then set_indexing "$data_vol" "on"; fi
                 _ok "$name: indexed"
                 ;;
             *)
                 set_indexing "$sys_vol" "off"
-                [[ -n "$data_vol" ]] && set_indexing "$data_vol" "off"
+                if [[ -n "$data_vol" ]]; then set_indexing "$data_vol" "off"; fi
                 _ok "$name: disabled (not booted)"
                 ;;
         esac
@@ -245,7 +301,7 @@ cmd_apply() {
 
     # Process any other mounted volume with config
     for vol in /Volumes/*/; do
-        [[ ! -d "$vol" ]] && continue
+        if [[ ! -d "$vol" ]]; then continue; fi
         local vpath="${vol%/}"
 
         # Skip already handled and data partitions
@@ -254,15 +310,15 @@ cmd_apply() {
         esac
         local vname
         vname=$(basename "$vpath")
-        [[ "$vname" == *" - Data" ]] && continue
+        if [[ "$vname" == *" - Data" ]]; then continue; fi
 
         local uuid
-        uuid=$(get_volume_uuid "$vpath")
-        [[ -z "$uuid" ]] && continue
+        uuid=$(get_volume_uuid "$vpath") || true
+        if [[ -z "$uuid" ]]; then continue; fi
 
         local mode
-        mode=$(config_get "$uuid")
-        [[ -z "$mode" ]] && continue
+        mode=$(config_get "$uuid") || true
+        if [[ -z "$mode" ]]; then continue; fi
 
         # Update label mapping
         label_set "$uuid" "$vname"
@@ -277,8 +333,9 @@ cmd_apply() {
                 _ok "$vname: disabled"
                 ;;
         esac
-    done
+    done || true
 
+    _fix_state_ownership
     _ok "Rules applied"
 }
 
@@ -451,7 +508,7 @@ PLIST
     _ok "Daemon installed and loaded"
     echo ""
 
-    # Apply rules (registers detected volumes in config)
+    # Apply rules (registers detected volumes in config, fixes ownership)
     cmd_apply
 }
 
@@ -529,90 +586,159 @@ _apply_set() {
     esac
 }
 
-# Interactive volume picker — shown when `set` is called with no args
-_interactive_set() {
-    # Collect volumes: path|name|mode
-    local volumes=() vol_paths=() vol_modes=()
+# Collect manageable volumes into parallel arrays.
+# Sets: _vol_names[], _vol_paths[], _vol_modes[]
+_collect_volumes() {
+    _vol_names=() _vol_paths=() _vol_modes=()
 
     # macOS system volumes
     while IFS='|' read -r sys_vol data_vol version; do
         local name uuid mode
         name=$(basename "$sys_vol")
         uuid=""
-        [[ -n "$data_vol" ]] && uuid=$(get_volume_uuid "$data_vol")
-        [[ -z "$uuid" ]] && uuid=$(get_volume_uuid "$sys_vol")
-        [[ -z "$uuid" ]] && continue
-        mode=$(config_get "$uuid")
-        volumes+=("$name (macOS $version)")
-        vol_paths+=("$sys_vol")
-        vol_modes+=("${mode:---}")
+        if [[ -n "$data_vol" ]]; then uuid=$(get_volume_uuid "$data_vol") || true; fi
+        if [[ -z "$uuid" ]]; then uuid=$(get_volume_uuid "$sys_vol") || true; fi
+        if [[ -z "$uuid" ]]; then continue; fi
+        mode=$(config_get "$uuid") || true
+        _vol_names+=("$name (macOS $version)")
+        _vol_paths+=("$sys_vol")
+        _vol_modes+=("${mode:---}")
     done < <(find_managed_volumes)
 
     # Other volumes (skip data partitions and system volumes)
     for vol in /Volumes/*/; do
-        [[ ! -d "$vol" ]] && continue
+        if [[ ! -d "$vol" ]]; then continue; fi
         is_macos_system_volume "$vol" && continue
         local vpath="${vol%/}"
         local vname
         vname=$(basename "$vpath")
-        [[ "$vname" == *" - Data" ]] && continue
+        if [[ "$vname" == *" - Data" ]]; then continue; fi
         local uuid
-        uuid=$(get_volume_uuid "$vpath")
-        [[ -z "$uuid" ]] && continue
+        uuid=$(get_volume_uuid "$vpath") || true
+        if [[ -z "$uuid" ]]; then continue; fi
         local mode
-        mode=$(config_get "$uuid")
-        volumes+=("$vname")
-        vol_paths+=("$vpath")
-        vol_modes+=("${mode:---}")
+        mode=$(config_get "$uuid") || true
+        _vol_names+=("$vname")
+        _vol_paths+=("$vpath")
+        _vol_modes+=("${mode:---}")
+    done || true
+}
+
+# Gum-based interactive picker with multi-select toggle
+_gum_interactive_set() {
+    local items=() preselected=()
+    local i
+    for i in "${!_vol_names[@]}"; do
+        items+=("${_vol_names[$i]}")
+        [[ "${_vol_modes[$i]}" == "on" ]] && preselected+=("${_vol_names[$i]}")
     done
 
-    if [[ ${#volumes[@]} -eq 0 ]]; then
-        echo "No manageable volumes found."
-        exit 0
-    fi
+    local boot_name
+    boot_name=$(get_boot_volume_name)
+    echo -e "${_C_BLUE}Boot:${_C_NC} $boot_name (always indexed)"
+    echo ""
 
+    # Build gum args with help keybinds and pre-selected volumes
+    local gum_args=(choose --no-limit --show-help --header "Select volumes to index:")
+    for sel in "${preselected[@]}"; do
+        gum_args+=(--selected "$sel")
+    done
+    gum_args+=("${items[@]}")
+
+    local selections
+    selections=$(gum "${gum_args[@]}") || { echo "Cancelled."; exit 0; }
+
+    # Determine what changed: compare old state to new selections
+    echo ""
+    for i in "${!_vol_names[@]}"; do
+        local name="${_vol_names[$i]}"
+        local path="${_vol_paths[$i]}"
+        local old="${_vol_modes[$i]}"
+        local new_mode
+
+        # Check if this volume is in the selections
+        if echo "$selections" | grep -qxF "$name"; then
+            new_mode="on"
+        else
+            new_mode="off"
+        fi
+
+        # Skip if unchanged
+        [[ "$old" == "$new_mode" ]] && continue
+
+        _apply_set "$path" "$new_mode"
+    done
+}
+
+# Plain numbered menu fallback
+_plain_interactive_set() {
+    local boot_name
+    boot_name=$(get_boot_volume_name)
+    echo -e "${_C_BLUE}Boot:${_C_NC} $boot_name (always indexed)"
+    echo ""
     echo "Volumes:"
     echo ""
     local i
-    for i in "${!volumes[@]}"; do
-        local state="${vol_modes[$i]}"
+    for i in "${!_vol_names[@]}"; do
         local display
-        case "$state" in
+        case "${_vol_modes[$i]}" in
             on)  display="on" ;;
             off) display="off" ;;
             *)   display="unmanaged" ;;
         esac
-        printf "  %d. %-28s %s\n" "$((i + 1))" "${volumes[$i]}" "$display"
+        printf "  %d. %-28s %s\n" "$((i + 1))" "${_vol_names[$i]}" "$display"
     done
     echo ""
 
     local choice
-    read -r -p "Toggle volume [1-${#volumes[@]}, q to quit]: " choice
+    read -r -p "Toggle volume [1-${#_vol_names[@]}, q to quit]: " choice
 
     if [[ "$choice" == "q" || -z "$choice" ]]; then
         echo "Cancelled."
         exit 0
     fi
 
-    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 || "$choice" -gt ${#volumes[@]} ]]; then
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 || "$choice" -gt ${#_vol_names[@]} ]]; then
         _err "Invalid choice: $choice"
         exit 1
     fi
 
     local idx=$((choice - 1))
-    local selected_path="${vol_paths[$idx]}"
-    local current="${vol_modes[$idx]}"
     local new_mode
-
-    # Toggle: on→off, anything else→on
-    if [[ "$current" == "on" ]]; then
+    if [[ "${_vol_modes[$idx]}" == "on" ]]; then
         new_mode="off"
     else
         new_mode="on"
     fi
 
     echo ""
-    _apply_set "$selected_path" "$new_mode"
+    _apply_set "${_vol_paths[$idx]}" "$new_mode"
+}
+
+# Interactive volume picker — shown when `set` is called with no args
+_interactive_set() {
+    # Fix root-owned state files (daemon or install may have written as root)
+    if [[ -d "$STATE_DIR" && "$(id -u)" != "0" ]]; then
+        local state_owner
+        state_owner=$(stat -f '%Su' "$STATE_DIR" 2>/dev/null) || true
+        if [[ "$state_owner" == "root" ]]; then
+            _info "Fixing state file permissions..."
+            sudo chown -R "$(whoami)" "$STATE_DIR"
+        fi
+    fi
+
+    _collect_volumes
+
+    if [[ ${#_vol_names[@]} -eq 0 ]]; then
+        echo "No manageable volumes found."
+        exit 0
+    fi
+
+    if declare -f ensure_gum &>/dev/null && ensure_gum; then
+        _gum_interactive_set
+    else
+        _plain_interactive_set
+    fi
 }
 
 cmd_set() {
@@ -724,6 +850,5 @@ case "${ARGS[0]:-}" in
         echo "  $(basename "$0") set Sequoia off        Only index when booted"
         echo "  $(basename "$0") rebuild                Rebuild boot volume index"
         echo "  $(basename "$0") rebuild Sequoia        Rebuild specific volume"
-        exit 1
         ;;
 esac

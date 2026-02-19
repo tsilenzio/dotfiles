@@ -19,7 +19,7 @@ TAGS=$(git tag -l "pre-update/*" "pre-upgrade/*" "pre-bundle-change/*" "pre-boot
 if [[ -z "$TAGS" ]]; then
     echo "  No rollback points found."
     echo ""
-    echo "Rollback points are created automatically when you run 'just update' or modify bundles."
+    echo "Rollback points are created automatically when you run 'rune update' or modify bundles."
     exit 0
 fi
 
@@ -50,6 +50,6 @@ done
 
 echo ""
 echo "Usage:"
-echo "  just rollback <timestamp>              # Git-only rollback"
-echo "  just rollback <timestamp> --with-brew  # Also revert packages"
-echo "  just rollback <timestamp> --dry-run    # Preview changes"
+echo "  rune rollback <timestamp>              # Git-only rollback"
+echo "  rune rollback <timestamp> --with-brew  # Also revert packages"
+echo "  rune rollback <timestamp> --dry-run    # Preview changes"

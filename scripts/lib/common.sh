@@ -381,3 +381,72 @@ detect_os() {
 
 is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
 is_linux() { [[ "$(uname -s)" == "Linux" ]]; }
+
+## Architecture Detection
+
+# Detect CPU architecture, normalized to GitHub release naming conventions
+# Returns: arm64, x86_64, armv6, armv7, i386
+detect_arch() {
+    local machine
+    machine="$(uname -m)"
+    case "$machine" in
+        aarch64|arm64) echo "arm64" ;;
+        x86_64|amd64)  echo "x86_64" ;;
+        armv6*)        echo "armv6" ;;
+        armv7*)        echo "armv7" ;;
+        i386|i686)     echo "i386" ;;
+        *)             echo "$machine" ;;
+    esac
+}
+
+## Gum (TUI helper — auto-downloaded and cached)
+
+GUM_VERSION="0.17.0"
+GUM_CACHE_DIR="$DOTFILES_DIR/.cache"
+
+# Ensure gum is available: system PATH → cache → download.
+# On success: sets GUM_BIN to the resolved path, adds to PATH, returns 0.
+# On failure: logs reason to stderr, returns 1.
+GUM_BIN=""
+
+ensure_gum() {
+    # Already in PATH
+    local found
+    found=$(command -v gum 2>/dev/null) && { GUM_BIN="$found"; return 0; }
+
+    # Check cache
+    if [[ -x "$GUM_CACHE_DIR/gum" ]]; then
+        GUM_BIN="$GUM_CACHE_DIR/gum"
+        export PATH="$GUM_CACHE_DIR:$PATH"
+        return 0
+    fi
+
+    # Non-interactive — can't prompt for download
+    if [[ ! -t 0 ]]; then
+        log_warn "gum not available (non-interactive session)" >&2
+        return 1
+    fi
+
+    # Source GitHub release helpers for download
+    # shellcheck source=scripts/lib/github.sh
+    source "$DOTFILES_DIR/scripts/lib/github.sh"
+
+    log_info "Downloading gum v${GUM_VERSION}..."
+    local arch asset tag url
+    arch=$(detect_arch)
+    tag="v${GUM_VERSION}"
+    asset=$(gh_asset_name "gum" "$GUM_VERSION" "Darwin" "$arch")
+    url=$(gh_asset_url "charmbracelet/gum" "$tag" "$asset")
+
+    mkdir -p "$GUM_CACHE_DIR"
+    if curl -fsSL "$url" | tar xz --strip-components=1 -C "$GUM_CACHE_DIR" 2>/dev/null; then
+        chmod +x "$GUM_CACHE_DIR/gum"
+        GUM_BIN="$GUM_CACHE_DIR/gum"
+        export PATH="$GUM_CACHE_DIR:$PATH"
+        log_success "Cached gum v${GUM_VERSION} at $GUM_BIN"
+        return 0
+    fi
+
+    log_error "Failed to download gum v${GUM_VERSION} from GitHub" >&2
+    return 1
+}

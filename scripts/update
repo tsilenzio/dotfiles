@@ -91,4 +91,4 @@ NEW_SHORT=$(git rev-parse --short HEAD)
 echo ""
 echo "Updated: $PREV_SHORT -> $NEW_SHORT"
 echo ""
-echo "Run 'just upgrade' to apply any new changes."
+echo "Run 'rune upgrade' to apply any new changes."

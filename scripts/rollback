@@ -48,7 +48,7 @@ if [[ -z "$TARGET" ]]; then
 
     if [[ ${#TAGS[@]} -eq 0 ]]; then
         echo "No rollback points found."
-        echo "Rollback points are created automatically when you run 'just update' or 'just upgrade'."
+        echo "Rollback points are created automatically when you run 'rune update' or 'rune upgrade'."
         exit 1
     fi
 
@@ -95,7 +95,7 @@ SNAPSHOT_DIR="$SNAPSHOT_BASE/$TARGET"
 # Verify tag exists
 if [[ -z "${TAG_NAME:-}" ]] || ! git rev-parse "$TAG_NAME" &>/dev/null; then
     echo "Error: Rollback point '$TARGET' not found."
-    echo "Run 'just history' to see available points."
+    echo "Run 'rune history' to see available points."
     exit 1
 fi
 
@@ -217,11 +217,11 @@ fi
 
 echo ""
 echo "Rollback complete!"
-echo "  To undo: just rollback $SNAPSHOT_TIMESTAMP"
+echo "  To undo: rune rollback $SNAPSHOT_TIMESTAMP"
 
 # Offer to re-apply configuration
 echo ""
-read -r -p "Re-apply configuration? (runs 'just upgrade') [y/N]: " RUN_UPGRADE
+read -r -p "Re-apply configuration? (runs 'rune upgrade') [y/N]: " RUN_UPGRADE
 if [[ "$RUN_UPGRADE" =~ ^[Yy]$ ]]; then
     "$DOTFILES_DIR/scripts/upgrade"
 fi

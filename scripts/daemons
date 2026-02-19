@@ -179,7 +179,14 @@ def discover_daemons() -> List[Daemon]:
             if label in seen_labels:
                 continue
 
-            installed = is_loaded(label)
+            dtype = info.get("type", "daemon")
+            if dtype == "daemon":
+                # System daemons aren't visible via launchctl without sudo;
+                # check plist file existence instead
+                plist_path = info.get("plist", f"/Library/LaunchDaemons/{label}.plist")
+                installed = os.path.exists(plist_path)
+            else:
+                installed = is_loaded(label)
             d = Daemon(
                 script=script,
                 scope=scope,
@@ -360,7 +367,7 @@ def draw(stdscr, daemons: List[Daemon]) -> Optional[List[Daemon]]:
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_GREEN, -1)
     curses.init_pair(2, curses.COLOR_CYAN, -1)
-    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_CYAN)
     curses.init_pair(4, curses.COLOR_YELLOW, -1)
     curses.init_pair(5, curses.COLOR_RED, -1)
 
@@ -380,11 +387,16 @@ def draw(stdscr, daemons: List[Daemon]) -> Optional[List[Daemon]]:
         stdscr.addstr(2, 2, "↑↓ navigate · Space toggle · Enter apply · q quit",
                       curses.A_DIM)
 
+        # Dynamic column width based on longest name (+6 for "[x] " prefix + padding)
+        nw = max(len(d.name) for d in daemons) + 2
+        nw = max(nw, 10)  # minimum width
+
         y = 4
-        hdr = f"  {'Service':<28}{'Scope':<16}{'Type':<10}{'Status'}"
+        hdr = f"  {'Service':<{nw + 4}}{'Scope':<16}{'Type':<10}{'Status'}"
         stdscr.addstr(y, 0, hdr[:w - 1], curses.A_DIM)
         y += 1
-        stdscr.addstr(y, 0, ("  " + "─" * min(68, w - 4))[:w - 1], curses.A_DIM)
+        rule_len = min(nw + 4 + 16 + 10 + 16, w - 4)
+        stdscr.addstr(y, 0, ("  " + "─" * rule_len)[:w - 1], curses.A_DIM)
         y += 1
 
         for i, d in enumerate(daemons):
@@ -398,7 +410,7 @@ def draw(stdscr, daemons: List[Daemon]) -> Optional[List[Daemon]]:
             if d.enabled != d.was_installed:
                 status += " *"
 
-            line = f"  {box} {d.name:<24}{d.scope:<16}{d.dtype:<10}{status}"
+            line = f"  {box} {d.name:<{nw}}{d.scope:<16}{d.dtype:<10}{status}"
             line = line[:w - 1]
 
             if selected:
