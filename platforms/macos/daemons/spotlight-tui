@@ -1,0 +1,825 @@
+#!/usr/bin/env python3
+"""Spotlight volume manager — interactive curses TUI.
+
+Checklist for toggling Spotlight indexing on mounted volumes, grouped by
+physical disk, with rebuild actions for fixing broken indexes. Surfaces
+the boot volume's /System/Volumes/Data partition state (which can silently
+lose indexing, breaking application metadata in Spotlight).
+
+Called by the spotlight daemon script when `set` is invoked with no args.
+"""
+
+import curses
+import os
+import plistlib
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+
+DOTFILES_DIR = Path(os.environ.get("DOTFILES_DIR", Path.home() / ".dotfiles"))
+STATE_DIR = DOTFILES_DIR / ".state" / "spotlight"
+CONFIG_FILE = STATE_DIR / "config"
+LABELS_FILE = STATE_DIR / "labels"
+
+# ─── Color pairs ──────────────────────────────────────────────────────────────
+
+C_OK = 1    # Green   — enabled checkboxes
+C_HEAD = 2  # Cyan    — title, section labels, active cursor
+C_SEL = 3   # Black/cyan — reserved
+C_WARN = 4  # Yellow  — pending changes
+C_ERR = 5   # Red     — errors, boot mismatch
+C_DIM = 6   # Gray    — inactive, boot row, hints, dividers
+
+# ─── Data ─────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Volume:
+    name: str
+    path: str
+    data_path: str      # "/Volumes/X - Data" or "/System/Volumes/Data" (boot)
+    uuid: str
+    mode: str           # config value: "on", "off", "--" (unmanaged)
+    is_boot: bool
+    is_macos: bool
+    version: str        # e.g. "26.0" or ""
+    enabled: bool
+    was_enabled: bool
+    disk_id: str        # ParentWholeDisk e.g. "disk0"
+    internal: bool      # True if internal disk
+    actual_status: str  # "on", "off", "unknown" from mdutil
+    data_status: str    # mdutil status of data partition, or ""
+
+    @property
+    def mismatch(self):
+        """Config disagrees with actual mdutil state."""
+        if self.is_boot:
+            return self.actual_status == "off" or self.data_status == "off"
+        if self.actual_status not in ("on", "off"):
+            return False
+        expected = "on" if self.enabled else "off"
+        return self.actual_status != expected
+
+
+@dataclass
+class DiskGroup:
+    disk_id: str
+    label: str       # "Internal" / "External"
+    size_str: str    # e.g. "500 GB" or ""
+
+
+@dataclass
+class Action:
+    label: str
+    key: str
+    enabled: bool
+    description: str
+
+
+# ─── Config helpers ───────────────────────────────────────────────────────────
+
+def config_get(uuid):
+    """Read a UUID=value entry from the config file."""
+    if not CONFIG_FILE.is_file():
+        return ""
+    for line in CONFIG_FILE.read_text().splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            if k == uuid:
+                return v
+    return ""
+
+
+def config_set(uuid, value):
+    """Write or update a UUID=value entry in the config file."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    lines = []
+    if CONFIG_FILE.is_file():
+        for line in CONFIG_FILE.read_text().splitlines():
+            if not line.startswith(f"{uuid}="):
+                lines.append(line)
+    lines.append(f"{uuid}={value}")
+    CONFIG_FILE.write_text("\n".join(lines) + "\n")
+
+
+def label_set(uuid, name):
+    """Store a human-readable label for a UUID."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    lines = []
+    if LABELS_FILE.is_file():
+        for line in LABELS_FILE.read_text().splitlines():
+            if not line.startswith(f"{uuid}="):
+                lines.append(line)
+    lines.append(f"{uuid}={name}")
+    LABELS_FILE.write_text("\n".join(lines) + "\n")
+
+
+# ─── Volume helpers ───────────────────────────────────────────────────────────
+
+def get_diskutil_info(mount_point):
+    """Get volume info via diskutil. Returns dict with uuid, disk_id, internal."""
+    try:
+        r = subprocess.run(
+            ["diskutil", "info", "-plist", mount_point],
+            capture_output=True,
+        )
+        if r.returncode != 0:
+            return {}
+        info = plistlib.loads(r.stdout)
+        return {
+            "uuid": info.get("VolumeUUID", ""),
+            "disk_id": info.get("ParentWholeDisk", ""),
+            "internal": info.get("Internal", True),
+        }
+    except Exception:
+        return {}
+
+
+def get_disk_size(disk_id):
+    """Get total size of a disk/container in bytes."""
+    try:
+        r = subprocess.run(
+            ["diskutil", "info", "-plist", f"/dev/{disk_id}"],
+            capture_output=True,
+        )
+        if r.returncode != 0:
+            return 0
+        info = plistlib.loads(r.stdout)
+        return (info.get("TotalSize")
+                or info.get("Size")
+                or info.get("APFSContainerTotalSpace")
+                or 0)
+    except Exception:
+        return 0
+
+
+def format_size(size_bytes):
+    """Format bytes as human-readable size (base-10, matching macOS)."""
+    if size_bytes <= 0:
+        return ""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size_bytes < 1000 or unit == "TB":
+            val = round(size_bytes, 1)
+            if val == int(val):
+                return f"{int(val)} {unit}"
+            return f"{val} {unit}"
+        size_bytes /= 1000
+    return f"{round(size_bytes, 1)} PB"
+
+
+def is_macos_system_volume(path):
+    return os.path.isfile(
+        os.path.join(path, "System/Library/CoreServices/SystemVersion.plist")
+    )
+
+
+def is_boot_volume(vol):
+    """Check if a volume is the currently booted macOS (compare device IDs)."""
+    name = os.path.basename(vol.rstrip("/"))
+    data = f"/Volumes/{name} - Data"
+    try:
+        if os.path.isdir(data):
+            data_dev = os.stat(data).st_dev
+            boot_data_dev = os.stat("/System/Volumes/Data").st_dev
+            return data_dev == boot_data_dev
+        else:
+            vol_dev = os.stat(vol).st_dev
+            boot_dev = os.stat("/").st_dev
+            return vol_dev == boot_dev
+    except OSError:
+        return False
+
+
+def get_macos_version(vol):
+    """Read ProductVersion from SystemVersion.plist."""
+    plist = os.path.join(
+        vol, "System/Library/CoreServices/SystemVersion.plist"
+    )
+    try:
+        with open(plist, "rb") as f:
+            data = plistlib.load(f)
+        return data.get("ProductVersion", "?")
+    except Exception:
+        return "?"
+
+
+def get_indexing_status(mount_point):
+    """Return 'on', 'off', or 'unknown' for a mount point."""
+    try:
+        r = subprocess.run(
+            ["mdutil", "-s", mount_point],
+            capture_output=True, text=True,
+        )
+        out = r.stdout
+        if "Indexing enabled" in out:
+            return "on"
+        if "Indexing disabled" in out:
+            return "off"
+    except Exception:
+        pass
+    return "unknown"
+
+
+def discover_volumes():
+    """Discover all manageable volumes with disk grouping info."""
+    volumes = []
+    handled_paths = set()
+
+    try:
+        entries = sorted(os.listdir("/Volumes"))
+    except OSError:
+        entries = []
+
+    # Pass 1: macOS system volumes under /Volumes/
+    for name in entries:
+        vol_path = f"/Volumes/{name}"
+        if not os.path.isdir(vol_path):
+            continue
+        if not is_macos_system_volume(vol_path):
+            continue
+
+        is_boot = is_boot_volume(vol_path)
+
+        # Boot data lives at /System/Volumes/Data, not /Volumes/X - Data
+        if is_boot:
+            data_path = "/System/Volumes/Data"
+        else:
+            data_path = f"/Volumes/{name} - Data"
+            if not os.path.isdir(data_path):
+                data_path = ""
+
+        version = get_macos_version(vol_path)
+
+        # Get diskutil info — prefer data volume for UUID
+        info = {}
+        if data_path:
+            info = get_diskutil_info(data_path)
+        if not info.get("uuid"):
+            info2 = get_diskutil_info(vol_path)
+            info["uuid"] = info2.get("uuid", "")
+            if not info.get("disk_id"):
+                info["disk_id"] = info2.get("disk_id", "")
+                info["internal"] = info2.get("internal", True)
+
+        uuid = info.get("uuid", "")
+        if not uuid:
+            continue
+
+        mode = "on" if is_boot else config_get(uuid)
+        if not mode:
+            mode = "--"
+
+        enabled = True if is_boot else mode == "on"
+        actual_status = get_indexing_status(vol_path)
+        data_status = get_indexing_status(data_path) if data_path else ""
+
+        volumes.append(Volume(
+            name=name,
+            path=vol_path,
+            data_path=data_path,
+            uuid=uuid,
+            mode=mode,
+            is_boot=is_boot,
+            is_macos=True,
+            version=version,
+            enabled=enabled,
+            was_enabled=enabled,
+            disk_id=info.get("disk_id", ""),
+            internal=info.get("internal", True),
+            actual_status=actual_status,
+            data_status=data_status,
+        ))
+
+        handled_paths.add(vol_path)
+        if data_path and not data_path.startswith("/System"):
+            handled_paths.add(data_path)
+
+    # Pass 2: non-macOS volumes with existing config entries
+    for name in entries:
+        vol_path = f"/Volumes/{name}"
+        if vol_path in handled_paths:
+            continue
+        if not os.path.isdir(vol_path):
+            continue
+        if name.endswith(" - Data"):
+            continue
+
+        info = get_diskutil_info(vol_path)
+        uuid = info.get("uuid", "")
+        if not uuid:
+            continue
+
+        mode = config_get(uuid)
+        if not mode:
+            continue  # only show non-macOS volumes that are already managed
+
+        enabled = mode == "on"
+        actual_status = get_indexing_status(vol_path)
+
+        volumes.append(Volume(
+            name=name,
+            path=vol_path,
+            data_path="",
+            uuid=uuid,
+            mode=mode,
+            is_boot=False,
+            is_macos=False,
+            version="",
+            enabled=enabled,
+            was_enabled=enabled,
+            disk_id=info.get("disk_id", ""),
+            internal=info.get("internal", True),
+            actual_status=actual_status,
+            data_status="",
+        ))
+
+    return volumes
+
+
+def group_volumes(volumes):
+    """Group volumes by physical disk.
+
+    Returns list of (DiskGroup, [Volume]) tuples, ordered:
+    internal (boot group first) then external then unknown.
+    Within each group: boot first, then alphabetical.
+    """
+    groups = {}
+    for vol in volumes:
+        did = vol.disk_id or "unknown"
+        groups.setdefault(did, []).append(vol)
+
+    internal = [(d, v) for d, v in groups.items()
+                if v[0].internal and d != "unknown"]
+    external = [(d, v) for d, v in groups.items()
+                if not v[0].internal and d != "unknown"]
+    unknown = [(d, v) for d, v in groups.items() if d == "unknown"]
+
+    # Boot volume's group first among internal
+    internal.sort(key=lambda x: not any(v.is_boot for v in x[1]))
+
+    result = []
+    for did, vols in internal + external + unknown:
+        vols.sort(key=lambda v: (not v.is_boot, v.name))
+
+        label = "Internal" if vols[0].internal else "External"
+        if did == "unknown":
+            label = "Other"
+
+        size = get_disk_size(did) if did != "unknown" else 0
+        size_str = format_size(size)
+
+        result.append((DiskGroup(disk_id=did, label=label, size_str=size_str), vols))
+
+    return result
+
+
+# ─── mdutil operations ────────────────────────────────────────────────────────
+
+def set_indexing(vol, desired):
+    """Enable or disable indexing on a single path."""
+    current = get_indexing_status(vol)
+    if current == desired:
+        return
+    if desired == "off":
+        subprocess.run(["mdutil", "-d", vol],
+                       capture_output=True)
+    else:
+        subprocess.run(["mdutil", "-i", "on", vol],
+                       capture_output=True)
+
+
+def mdutil_rebuild(vol):
+    """Force Spotlight to re-index a volume."""
+    subprocess.run(["sudo", "mdutil", "-E", vol],
+                   capture_output=True)
+
+
+def fix_state_ownership():
+    """Fix state dir ownership after root writes."""
+    if os.getuid() == 0:
+        try:
+            owner = Path(DOTFILES_DIR).stat().st_uid
+            if owner != 0:
+                import pwd
+                username = pwd.getpwuid(owner).pw_name
+                subprocess.run(
+                    ["chown", "-R", username, str(STATE_DIR)],
+                    capture_output=True,
+                )
+        except Exception:
+            pass
+
+
+# ─── TUI ──────────────────────────────────────────────────────────────────────
+
+def setup_colors():
+    curses.set_escdelay(25)
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(C_OK, curses.COLOR_GREEN, -1)
+    curses.init_pair(C_HEAD, curses.COLOR_CYAN, -1)
+    curses.init_pair(C_SEL, curses.COLOR_BLACK, curses.COLOR_CYAN)
+    curses.init_pair(C_WARN, curses.COLOR_YELLOW, -1)
+    curses.init_pair(C_ERR, curses.COLOR_RED, -1)
+    if curses.COLORS >= 16:
+        curses.init_pair(C_DIM, 8, -1)
+    else:
+        curses.init_pair(C_DIM, curses.COLOR_WHITE, -1)
+
+
+def status_text(item):
+    """Generate status bar text for the highlighted item."""
+    if isinstance(item, Volume):
+        vol = item
+        if vol.is_boot:
+            parts = [vol.path]
+            parts.append(vol.actual_status)
+            parts.append("boot volume")
+            if vol.data_status == "off":
+                parts.append("\u26a0 data indexing off")
+        else:
+            parts = [vol.data_path or vol.path]
+            parts.append(vol.actual_status)
+            if vol.is_macos:
+                parts.append("macOS system volume")
+            else:
+                parts.append("data volume")
+            if vol.mismatch:
+                parts.append("\u26a0 out of sync")
+        return " \u00b7 ".join(parts)
+    elif isinstance(item, Action):
+        return item.description
+    return ""
+
+
+def draw(stdscr, disk_groups, actions):
+    """Main TUI loop. Returns (all_volumes, actions) on Enter, None on Esc."""
+    curses.curs_set(0)
+    setup_colors()
+
+    ok = curses.color_pair(C_OK)
+    head = curses.color_pair(C_HEAD)
+    warn = curses.color_pair(C_WARN)
+    err = curses.color_pair(C_ERR)
+    dim = curses.color_pair(C_DIM)
+
+    # Build flat volume list matching group display order
+    all_volumes = []
+    for _, vols in disk_groups:
+        all_volumes.extend(vols)
+
+    n_vols = len(all_volumes)
+    n_acts = len(actions)
+    total = n_vols + n_acts
+    if total == 0:
+        return None
+    cursor = 0
+    actions_start = n_vols
+
+    # Section starts for tab jump (one per disk group + actions)
+    # section_cursors remembers last position per section
+    section_starts = []
+    idx = 0
+    for _, vols in disk_groups:
+        section_starts.append(idx)
+        idx += len(vols)
+    section_starts.append(actions_start)
+    section_cursors = list(section_starts)
+
+    # Compute column width from longest display name
+    max_display = max(
+        (len(v.name) + (len(f" (macOS {v.version})") if v.version else 0)
+         for v in all_volumes),
+        default=10,
+    )
+    cw = max(max_display + 12, 30)
+
+    while True:
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+
+        if h < 14 or w < 40:
+            stdscr.addstr(0, 0, "Terminal too small (need 40x14)")
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key in (27, ord("q")):
+                return None
+            continue
+
+        in_volumes = cursor < actions_start
+        rule = "\u2500" * min(cw, w - 4)
+        y = 1
+
+        # ── Title ──
+        try:
+            stdscr.addstr(y, 2, "Spotlight Volume Manager", head | curses.A_BOLD)
+        except curses.error:
+            pass
+        y += 2
+
+        # ── Volume groups ──
+        vol_idx = 0
+        for gi, (group, vols) in enumerate(disk_groups):
+            if y >= h - 7:
+                break
+
+            # Group header: "Internal · 500 GB"
+            header = group.label
+            if group.size_str:
+                header += f" \u00b7 {group.size_str}"
+            in_group = vol_idx <= cursor < vol_idx + len(vols)
+            hdr_attr = 0 if in_group else dim
+            try:
+                stdscr.addstr(y, 2, header, hdr_attr)
+            except curses.error:
+                pass
+            y += 1
+
+            try:
+                stdscr.addstr(y, 2, rule, dim)
+            except curses.error:
+                pass
+            y += 1
+
+            for vol in vols:
+                if y >= h - 7:
+                    break
+
+                at_cursor = cursor == vol_idx
+                box = "[x]" if vol.enabled else "[ ]"
+
+                display = vol.name
+                if vol.version:
+                    display += f" (macOS {vol.version})"
+
+                # Determine row attribute — cursor bolds the item's own color
+                if vol.is_boot:
+                    base = dim
+                elif vol.enabled != vol.was_enabled:
+                    base = warn
+                elif vol.enabled:
+                    base = ok
+                else:
+                    base = 0
+
+                if at_cursor:
+                    box_attr = base | curses.A_BOLD
+                    name_attr = base | curses.A_BOLD
+                else:
+                    box_attr = base
+                    name_attr = base
+
+                try:
+                    stdscr.addstr(y, 2, box, box_attr)
+                    stdscr.addstr(y, 6, display, name_attr)
+                except curses.error:
+                    pass
+
+                # Right-aligned tags: ⚠ (colored) + boot (dimmed)
+                tag_parts = []
+                if vol.mismatch:
+                    tag_parts.append(("\u26a0", err if vol.is_boot else warn))
+                if vol.is_boot:
+                    tag_parts.append(("boot", dim))
+
+                if tag_parts:
+                    tag_len = sum(len(t) for t, _ in tag_parts) + len(tag_parts) - 1
+                    tx = max(6 + len(display) + 2, 2 + cw - tag_len)
+                    tx = min(tx, w - tag_len - 2)
+                    try:
+                        for ti, (text, tattr) in enumerate(tag_parts):
+                            if ti > 0:
+                                stdscr.addstr(y, tx, " ", dim)
+                                tx += 1
+                            stdscr.addstr(y, tx, text, tattr)
+                            tx += len(text)
+                    except curses.error:
+                        pass
+
+                y += 1
+                vol_idx += 1
+
+            # Space between groups
+            if gi < len(disk_groups) - 1:
+                y += 1
+
+        # ── Actions section ──
+        y += 1
+        label_attr = curses.A_BOLD if not in_volumes else dim
+        try:
+            stdscr.addstr(y, 2, "Actions", label_attr)
+        except curses.error:
+            pass
+        y += 1
+
+        for i, act in enumerate(actions):
+            if y >= h - 4:
+                break
+
+            at_cursor = cursor == actions_start + i
+            box = "[x]" if act.enabled else "[ ]"
+
+            if at_cursor:
+                attr = (warn if act.enabled else 0) | curses.A_BOLD
+            elif act.enabled:
+                attr = warn
+            else:
+                attr = 0
+
+            try:
+                stdscr.addstr(y, 2, box, attr)
+                stdscr.addstr(y, 6, act.label, attr)
+            except curses.error:
+                pass
+
+            y += 1
+
+        # ── Footer messages ──
+        y += 1
+        boot_vols = [v for v in all_volumes if v.is_boot]
+        if boot_vols and boot_vols[0].mismatch and y < h - 3:
+            try:
+                stdscr.addstr(y, 2, "\u26a0 Boot volume indexing mismatch", err)
+            except curses.error:
+                pass
+            y += 1
+
+        changes = sum(1 for v in all_volumes
+                      if v.enabled != v.was_enabled and not v.is_boot)
+        action_checks = sum(1 for a in actions if a.enabled)
+        pending = changes + action_checks
+        if pending and y < h - 3:
+            try:
+                stdscr.addstr(y, 2, f"{pending} pending change(s)", warn)
+            except curses.error:
+                pass
+
+        # ── Status bar (anchored near bottom) ──
+        status_y = h - 3
+        if cursor < actions_start:
+            item = all_volumes[cursor]
+        else:
+            item = actions[cursor - actions_start]
+        bar = status_text(item)
+        try:
+            stdscr.addstr(status_y, 2, bar[:w - 4], dim)
+        except curses.error:
+            pass
+
+        # ── Hint line (anchored at bottom) ──
+        hint_y = h - 1
+        hint = "tab jump  \u2191\u2193 select  space toggle  enter apply  esc quit"
+        try:
+            stdscr.addstr(hint_y, 2, hint[:w - 4], dim)
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+
+        # ── Input ──
+        key = stdscr.getch()
+
+        # Find which section the cursor is in
+        def _current_section():
+            for si in range(len(section_starts)):
+                if si + 1 < len(section_starts):
+                    if cursor < section_starts[si + 1]:
+                        return si
+            return len(section_starts) - 1
+
+        if key in (27, ord("q")):
+            return None
+        elif key == ord("\t"):
+            section_cursors[_current_section()] = cursor
+            cursor = section_cursors[(_current_section() + 1) % len(section_starts)]
+        elif key == curses.KEY_BTAB:
+            section_cursors[_current_section()] = cursor
+            cursor = section_cursors[(_current_section() - 1) % len(section_starts)]
+        elif key == curses.KEY_UP:
+            cursor = (cursor - 1) % total
+        elif key == curses.KEY_DOWN:
+            cursor = (cursor + 1) % total
+        elif key == ord(" "):
+            if cursor < actions_start:
+                vol = all_volumes[cursor]
+                if not vol.is_boot:
+                    vol.enabled = not vol.enabled
+            else:
+                ai = cursor - actions_start
+                actions[ai].enabled = not actions[ai].enabled
+        elif key in (curses.KEY_ENTER, 10, 13):
+            return (all_volumes, actions)
+
+        # Remember cursor position in current section
+        section_cursors[_current_section()] = cursor
+
+
+# ─── Apply ────────────────────────────────────────────────────────────────────
+
+def apply_changes(volumes, actions):
+    """Apply volume toggles and rebuild actions after TUI exits."""
+    rebuild_changed = any(a.enabled for a in actions if a.key == "rebuild_changed")
+    rebuild_all = any(a.enabled for a in actions if a.key == "rebuild_all")
+
+    changed = False
+
+    # 1. Volume toggles
+    for vol in volumes:
+        if vol.is_boot:
+            continue
+        if vol.enabled == vol.was_enabled:
+            continue
+
+        changed = True
+        new_mode = "on" if vol.enabled else "off"
+        config_set(vol.uuid, new_mode)
+        label_set(vol.uuid, vol.name)
+        print(f"  {vol.name}: {new_mode}")
+
+        set_indexing(vol.path, new_mode)
+        if vol.data_path:
+            set_indexing(vol.data_path, new_mode)
+
+    # 2. Rebuild changed: mdutil -E on volumes toggled to "on"
+    if rebuild_changed and not rebuild_all:
+        for vol in volumes:
+            if vol.is_boot:
+                continue
+            if vol.enabled and not vol.was_enabled:
+                print(f"  Rebuilding: {vol.name}")
+                mdutil_rebuild(vol.path)
+                if vol.data_path:
+                    mdutil_rebuild(vol.data_path)
+
+    # 3. Rebuild all: mdutil -E on every enabled volume including boot
+    #    Boot volume has data_path="/System/Volumes/Data" so the loop covers it
+    if rebuild_all:
+        print("  Rebuilding all enabled indexes...")
+        for vol in volumes:
+            if vol.enabled:
+                print(f"  Rebuilding: {vol.name}")
+                mdutil_rebuild(vol.path)
+                if vol.data_path:
+                    mdutil_rebuild(vol.data_path)
+
+    if not changed and not rebuild_changed and not rebuild_all:
+        print("  No changes.")
+
+    fix_state_ownership()
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    # Fix root-owned state files before anything
+    if STATE_DIR.is_dir() and os.getuid() != 0:
+        try:
+            owner = STATE_DIR.stat().st_uid
+            if owner == 0:
+                print("Fixing state file permissions...")
+                subprocess.run(
+                    ["sudo", "chown", "-R", str(os.getuid()), str(STATE_DIR)],
+                    check=False,
+                )
+        except OSError:
+            pass
+
+    volumes = discover_volumes()
+
+    if not volumes:
+        print("No volumes found.")
+        sys.exit(0)
+
+    disk_groups = group_volumes(volumes)
+
+    actions = [
+        Action(
+            label="Rebuild changed volumes",
+            key="rebuild_changed",
+            enabled=False,
+            description="Rebuild Spotlight index on volumes toggled on",
+        ),
+        Action(
+            label="Rebuild all enabled indexes",
+            key="rebuild_all",
+            enabled=False,
+            description="Rebuild every enabled volume including boot + /System/Volumes/Data",
+        ),
+    ]
+
+    result = curses.wrapper(draw, disk_groups, actions)
+
+    if result is None:
+        print("Cancelled.")
+        sys.exit(0)
+
+    vols, acts = result
+    print("Applying changes...")
+    apply_changes(vols, acts)
+
+
+if __name__ == "__main__":
+    main()

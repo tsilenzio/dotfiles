@@ -48,12 +48,6 @@ _ok()    { echo -e "${_C_GREEN}[ok]${_C_NC} $1"; _syslog "ok: $1"; }
 _warn()  { echo -e "${_C_YELLOW}[warn]${_C_NC} $1"; _syslog "warn: $1"; }
 _err()   { echo -e "${_C_RED}[error]${_C_NC} $1"; _syslog "error: $1"; }
 
-# Source shared lib for interactive features (gum TUI).
-# Skipped when running as installed daemon (/usr/local/libexec/).
-if [[ -t 1 && -f "$DOTFILES_DIR/scripts/lib/common.sh" ]]; then
-    source "$DOTFILES_DIR/scripts/lib/common.sh"
-fi
-
 # --- Config helpers ---
 
 ensure_state_dir() {
@@ -241,7 +235,7 @@ cmd_apply() {
     _info "Applying Spotlight rules..."
     ensure_state_dir
 
-    # Boot volume: always indexed
+    # Boot volume: always indexed (both system and data partitions)
     local boot_status
     boot_status=$(get_indexing_status "/")
     if [[ "$boot_status" != "on" ]]; then
@@ -251,6 +245,23 @@ cmd_apply() {
         _ok "Boot volume indexing restored (rebuild started)"
     else
         _ok "Boot volume: indexed"
+    fi
+
+    # Boot data partition (/System/Volumes/Data): must also be indexed.
+    # Apps, user data, and most writable content live here on APFS.
+    # If this is disabled, Spotlight only has filesystem metadata for local
+    # apps and can't show them as proper application results.
+    if [[ -d "/System/Volumes/Data" ]]; then
+        local boot_data_status
+        boot_data_status=$(get_indexing_status "/System/Volumes/Data")
+        if [[ "$boot_data_status" != "on" ]]; then
+            _warn "Boot data volume indexing was OFF — re-enabling"
+            mdutil -i on /System/Volumes/Data >/dev/null 2>&1
+            mdutil -E / >/dev/null 2>&1
+            _ok "Boot data volume indexing restored (rebuild started)"
+        else
+            _ok "Boot data volume: indexed"
+        fi
     fi
 
     # Track handled volume paths to avoid double-processing
@@ -624,52 +635,6 @@ _collect_volumes() {
     done || true
 }
 
-# Gum-based interactive picker with multi-select toggle
-_gum_interactive_set() {
-    local items=() preselected=()
-    local i
-    for i in "${!_vol_names[@]}"; do
-        items+=("${_vol_names[$i]}")
-        [[ "${_vol_modes[$i]}" == "on" ]] && preselected+=("${_vol_names[$i]}")
-    done
-
-    local boot_name
-    boot_name=$(get_boot_volume_name)
-    echo -e "${_C_BLUE}Boot:${_C_NC} $boot_name (always indexed)"
-    echo ""
-
-    # Build gum args with help keybinds and pre-selected volumes
-    local gum_args=(choose --no-limit --show-help --header "Select volumes to index:")
-    for sel in "${preselected[@]}"; do
-        gum_args+=(--selected "$sel")
-    done
-    gum_args+=("${items[@]}")
-
-    local selections
-    selections=$(gum "${gum_args[@]}") || { echo "Cancelled."; exit 0; }
-
-    # Determine what changed: compare old state to new selections
-    echo ""
-    for i in "${!_vol_names[@]}"; do
-        local name="${_vol_names[$i]}"
-        local path="${_vol_paths[$i]}"
-        local old="${_vol_modes[$i]}"
-        local new_mode
-
-        # Check if this volume is in the selections
-        if echo "$selections" | grep -qxF "$name"; then
-            new_mode="on"
-        else
-            new_mode="off"
-        fi
-
-        # Skip if unchanged
-        [[ "$old" == "$new_mode" ]] && continue
-
-        _apply_set "$path" "$new_mode"
-    done
-}
-
 # Plain numbered menu fallback
 _plain_interactive_set() {
     local boot_name
@@ -717,6 +682,15 @@ _plain_interactive_set() {
 
 # Interactive volume picker — shown when `set` is called with no args
 _interactive_set() {
+    # Try Python curses TUI first
+    local tui_script
+    tui_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/spotlight-tui"
+
+    if [[ -x "$tui_script" ]] && python3 -c "import curses" 2>/dev/null; then
+        DOTFILES_DIR="$DOTFILES_DIR" exec python3 "$tui_script"
+    fi
+
+    # Fallback: plain numbered menu
     # Fix root-owned state files (daemon or install may have written as root)
     if [[ -d "$STATE_DIR" && "$(id -u)" != "0" ]]; then
         local state_owner
@@ -734,11 +708,7 @@ _interactive_set() {
         exit 0
     fi
 
-    if declare -f ensure_gum &>/dev/null && ensure_gum; then
-        _gum_interactive_set
-    else
-        _plain_interactive_set
-    fi
+    _plain_interactive_set
 }
 
 cmd_set() {
