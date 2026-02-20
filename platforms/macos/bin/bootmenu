@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Boot menu — interactive TUI for switching between macOS APFS volumes.
 
-Reads an encrypted TOML config, evaluates rules, presents a zone-based
+Reads an encrypted TOML config, evaluates rules, presents a section-based
 menu, and reboots into the selected volume.
 
 See .docs/bootmenu.md for the full specification.
@@ -29,15 +29,15 @@ CONFIG_PATH = os.path.join(DOTFILES, "platforms/macos/secrets/bootmenu.toml.age"
 
 RECOVERY = {"id": "__recovery__", "label": "Recovery", "type": "recovery"}
 
-C_PRIMARY = 1    # cyan   — primary zone
-C_SECONDARY = 2  # yellow — middle zones (rule-separated)
-C_CAUTION = 3    # magenta — last zone (deprecated + recovery)
+C_PRIMARY = 1    # cyan   — primary section
+C_SECONDARY = 2  # yellow — middle sections (rule-separated)
+C_CAUTION = 3    # magenta — last section (deprecated + recovery)
 C_DIM = 4        # gray   — inactive / hints
 
 _KNOWN_TOP = frozenset({"meta", "rules", "volumes", "defaults", "sops"})
 _KNOWN_VOL = frozenset({
     "id", "label", "mount", "password", "category",
-    "uuid", "deprecated", "zoned_when_any",
+    "uuid", "deprecated", "sectioned_when_any",
 })
 
 
@@ -104,12 +104,12 @@ def validate(config):
                 _die("duplicate volume uuid")
             uuids.add(v["uuid"])
 
-        for rn in v.get("zoned_when_any", []):
+        for rn in v.get("sectioned_when_any", []):
             if rn not in rules:
-                _die(f"volume '{vid}': zoned_when_any references unknown rule '{rn}'")
+                _die(f"volume '{vid}': sectioned_when_any references unknown rule '{rn}'")
 
-        if v.get("deprecated") and v.get("zoned_when_any"):
-            _warn(f"volume '{vid}': deprecated ignores zoned_when_any")
+        if v.get("deprecated") and v.get("sectioned_when_any"):
+            _warn(f"volume '{vid}': deprecated ignores sectioned_when_any")
 
         for k in v:
             if k not in _KNOWN_VOL:
@@ -278,16 +278,16 @@ def _vol_uuid(path):
     return plistlib.loads(r.stdout).get("VolumeUUID")
 
 
-# ─── Zone Building ────────────────────────────────────────────────────────────
+# ─── Section Building ─────────────────────────────────────────────────────────
 
-def build_zones(volumes, rule_results):
+def build_sections(volumes, rule_results):
     primary, middle, last = [], [], []
 
     for vol in volumes:
         if vol.get("deprecated"):
             last.append(vol)
-        elif vol.get("zoned_when_any") and any(
-            rule_results.get(r) for r in vol["zoned_when_any"]
+        elif vol.get("sectioned_when_any") and any(
+            rule_results.get(r) for r in vol["sectioned_when_any"]
         ):
             middle.append(vol)
         else:
@@ -295,22 +295,22 @@ def build_zones(volumes, rule_results):
 
     last.append(RECOVERY)
 
-    zones, zone_colors = [], []
+    sections, section_colors = [], []
     if primary:
-        zones.append(primary)
-        zone_colors.append(C_PRIMARY)
+        sections.append(primary)
+        section_colors.append(C_PRIMARY)
     if middle:
-        zones.append(middle)
-        zone_colors.append(C_SECONDARY)
-    zones.append(last)
-    zone_colors.append(C_CAUTION)
+        sections.append(middle)
+        section_colors.append(C_SECONDARY)
+    sections.append(last)
+    section_colors.append(C_CAUTION)
 
-    return zones, zone_colors
+    return sections, section_colors
 
 
 # ─── Default Selection ────────────────────────────────────────────────────────
 
-def compute_default(zones, defaults, rule_results, booted_id, avail):
+def compute_default(sections, defaults, rule_results, booted_id, avail):
     for d in defaults:
         if d["when_booted"] != booted_id:
             continue
@@ -320,34 +320,34 @@ def compute_default(zones, defaults, rule_results, booted_id, avail):
         target = d["select"]
         if avail.get(target) is None:
             continue
-        pos = _find_in_zones(zones, target)
+        pos = _find_in_sections(sections, target)
         if pos:
             return pos
 
-    # Fallback: first available non-booted volume, walking zones in order
-    for zi, zone in enumerate(zones):
-        for ii, item in enumerate(zone):
+    # Fallback: first available non-booted volume, walking sections in order
+    for si, section in enumerate(sections):
+        for ii, item in enumerate(section):
             if item.get("type") == "recovery":
                 continue
             if item.get("id") == booted_id:
                 continue
             if avail.get(item.get("id")) is not None:
-                return zi, ii
+                return si, ii
 
     # Last resort: Recovery
-    for zi in range(len(zones) - 1, -1, -1):
-        for ii, item in enumerate(zones[zi]):
+    for si in range(len(sections) - 1, -1, -1):
+        for ii, item in enumerate(sections[si]):
             if item.get("type") == "recovery":
-                return zi, ii
+                return si, ii
 
     return 0, 0
 
 
-def _find_in_zones(zones, target_id):
-    for zi, zone in enumerate(zones):
-        for ii, item in enumerate(zone):
+def _find_in_sections(sections, target_id):
+    for si, section in enumerate(sections):
+        for ii, item in enumerate(section):
             if item.get("id") == target_id:
-                return zi, ii
+                return si, ii
     return None
 
 
@@ -363,10 +363,10 @@ def status_text(item, avail, rule_results):
 
     if avail.get(vid) is None:
         parts.append("not mounted")
-    if item.get("zoned_when_any"):
-        active = [r for r in item["zoned_when_any"] if rule_results.get(r)]
+    if item.get("sectioned_when_any"):
+        active = [r for r in item["sectioned_when_any"] if rule_results.get(r)]
         if active:
-            parts.append(f"zoned by: {', '.join(active)}")
+            parts.append(f"sectioned by: {', '.join(active)}")
     if item.get("deprecated"):
         parts.append("deprecated")
 
@@ -403,21 +403,22 @@ def _confirm(stdscr, item, dim):
             return False
 
 
-def select_target(stdscr, zones, zone_colors, avail, rule_results,
+def select_target(stdscr, sections, section_colors, avail, rule_results,
                   booted_id, booted_label, defaults):
     curses.curs_set(0)
     setup_colors()
 
-    n_zones = len(zones)
-    az, ac = compute_default(zones, defaults, rule_results, booted_id, avail)
-    cursors = [0] * n_zones
-    cursors[az] = ac
+    n_sections = len(sections)
+    sec, ac = compute_default(sections, defaults, rule_results, booted_id, avail)
+    cursors = [0] * n_sections
+    cursors[sec] = ac
+    section0_default = ac if sec == 0 else 0
 
     flash = None
     dim = curses.color_pair(C_DIM)
 
     max_label = max(
-        (len(it["label"]) for z in zones for it in z), default=10
+        (len(it["label"]) for s in sections for it in s), default=10
     )
     cw = max(max_label + 10, 30)
 
@@ -434,20 +435,20 @@ def select_target(stdscr, zones, zone_colors, avail, rule_results,
             except curses.error:
                 pass
 
-        # ── Zones ──
+        # ── Sections ──
         y = 3
-        for zi, zone in enumerate(zones):
-            zc = curses.color_pair(zone_colors[zi])
+        for si, section in enumerate(sections):
+            sc = curses.color_pair(section_colors[si])
 
-            for ii, item in enumerate(zone):
-                active = zi == az
-                at_cursor = active and ii == cursors[zi]
+            for ii, item in enumerate(section):
+                active = si == sec
+                at_cursor = active and ii == cursors[si]
                 is_rec = item.get("type") == "recovery"
                 is_avail = is_rec or avail.get(item.get("id")) is not None
 
                 # Cursor indicator
                 if at_cursor:
-                    stdscr.addstr(y, 2, "\u25b8 ", zc | curses.A_BOLD)
+                    stdscr.addstr(y, 2, "\u25b8 ", sc | curses.A_BOLD)
                 else:
                     stdscr.addstr(y, 2, "  ")
 
@@ -462,11 +463,11 @@ def select_target(stdscr, zones, zone_colors, avail, rule_results,
                 if not active:
                     attr = dim
                 elif at_cursor and is_avail:
-                    attr = zc | curses.A_BOLD
+                    attr = sc | curses.A_BOLD
                 elif at_cursor:
                     attr = dim | curses.A_BOLD
                 elif is_avail:
-                    attr = zc
+                    attr = sc
                 else:
                     attr = dim
 
@@ -477,29 +478,28 @@ def select_target(stdscr, zones, zone_colors, avail, rule_results,
 
                 y += 1
 
-            # Divider between zones
-            if zi < n_zones - 1:
+            # Divider between sections
+            if si < n_sections - 1:
                 try:
                     stdscr.addstr(y, 2, "\u2500" * cw, dim)
                 except curses.error:
                     pass
                 y += 1
 
-        # ── Status bar ──
-        y += 1
-        cur = zones[az][cursors[az]]
+        # ── Status bar (anchored near bottom) ──
+        h, w = stdscr.getmaxyx()
+        cur = sections[sec][cursors[sec]]
         bar = flash if flash else status_text(cur, avail, rule_results)
         try:
-            stdscr.addstr(y, 2, bar, dim)
+            stdscr.addstr(h - 3, 2, bar[:w - 4], dim)
         except curses.error:
             pass
 
-        # ── Hints ──
-        y += 2
+        # ── Hints (anchored at bottom) ──
         try:
             stdscr.addstr(
-                y, 2,
-                "tab zones  \u2191\u2193 select  enter confirm  esc quit",
+                h - 1, 2,
+                "tab section  \u2191\u2193 select  enter confirm  esc quit",
                 dim,
             )
         except curses.error:
@@ -512,15 +512,17 @@ def select_target(stdscr, zones, zone_colors, avail, rule_results,
         key = stdscr.getch()
 
         if key == ord("\t"):
-            az = (az + 1) % n_zones
+            sec = (sec + 1) % n_sections
+            if sec == 0:
+                cursors[0] = section0_default
         elif key == curses.KEY_UP:
-            if cursors[az] > 0:
-                cursors[az] -= 1
+            if cursors[sec] > 0:
+                cursors[sec] -= 1
         elif key == curses.KEY_DOWN:
-            if cursors[az] < len(zones[az]) - 1:
-                cursors[az] += 1
+            if cursors[sec] < len(sections[sec]) - 1:
+                cursors[sec] += 1
         elif key in (curses.KEY_ENTER, 10, 13):
-            item = zones[az][cursors[az]]
+            item = sections[sec][cursors[sec]]
             is_rec = item.get("type") == "recovery"
             is_avail = is_rec or avail.get(item.get("id")) is not None
             if is_avail:
@@ -570,7 +572,7 @@ def restart():
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def dry_run(volumes, rules, defaults, rule_results, booted_id,
-            booted_label, avail, zones, zone_colors):
+            booted_label, avail, sections, section_colors):
     print("── Boot Volume ──")
     print(f"  booted: {booted_label or '(unknown)'} (id={booted_id or 'none'})")
 
@@ -588,17 +590,17 @@ def dry_run(volumes, rules, defaults, rule_results, booted_id,
         uuid_info = f"  uuid={v['uuid']}" if v.get("uuid") else ""
         print(f"  {v['label']} ({v['mount']}): {state}{uuid_info}")
 
-    print("\n── Zones ──")
+    print("\n── Sections ──")
     color_names = {C_PRIMARY: "primary", C_SECONDARY: "middle", C_CAUTION: "last"}
-    for zi, zone in enumerate(zones):
-        cname = color_names.get(zone_colors[zi], "?")
-        items = ", ".join(it["label"] for it in zone)
-        print(f"  zone {zi + 1} ({cname}): {items}")
+    for si, section in enumerate(sections):
+        cname = color_names.get(section_colors[si], "?")
+        items = ", ".join(it["label"] for it in section)
+        print(f"  section {si + 1} ({cname}): {items}")
 
-    dz, di = compute_default(zones, defaults, rule_results, booted_id, avail)
-    sel = zones[dz][di]
+    dz, di = compute_default(sections, defaults, rule_results, booted_id, avail)
+    sel = sections[dz][di]
     print(f"\n── Default Selection ──")
-    print(f"  {sel['label']} (zone {dz + 1}, position {di})")
+    print(f"  {sel['label']} (section {dz + 1}, position {di})")
 
 
 def main():
@@ -618,15 +620,15 @@ def main():
             break
 
     avail = check_availability(volumes)
-    zones, zone_colors = build_zones(volumes, rule_results)
+    sections, section_colors = build_sections(volumes, rule_results)
 
     if is_dry_run:
         dry_run(volumes, rules, defaults, rule_results, booted_id,
-                booted_label, avail, zones, zone_colors)
+                booted_label, avail, sections, section_colors)
         sys.exit(0)
 
     target = curses.wrapper(
-        select_target, zones, zone_colors, avail, rule_results,
+        select_target, sections, section_colors, avail, rule_results,
         booted_id, booted_label, defaults,
     )
 

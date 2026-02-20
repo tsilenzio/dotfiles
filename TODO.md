@@ -4,29 +4,74 @@ Planned improvements and ideas for the dotfiles system.
 
 ## High Priority
 
-- [ ] **gum integration** - Add Charmbracelet's gum for nicer TUI in bundle selection. Can download binary directly for curl|bash scenarios without Homebrew.
+- [x] **gum integration** - Auto-download and cache Charmbracelet's gum for interactive TUI menus. `ensure_gum` in common.sh with GitHub release helpers in `scripts/lib/github.sh`. Used in spotlight picker with plain fallback.
 
 - [ ] **brew wrapper** - Create a wrapper script that intercepts `brew install` and prompts to add manually installed packages to a bundle's Brewfile. Helps maintain Brewfile hygiene.
 
 - [ ] **Test installation end-to-end** - Run through full install on a fresh VM to verify bundle structure, dependency resolution, and package installation.
 
-- [x] **Global dotfiles command (`rune`)** - Run dotfiles commands from anywhere without `cd ~/.dotfiles` first. Command name: `rune` (fallback: `runectl` if conflict with Rune language CLI ~1.7k stars).
+- [x] **Global dotfiles command (`rune`)** - Run dotfiles commands from anywhere without `cd ~/.dotfiles` first. Implemented as a shell function wrapping `just`.
 
-  **Approach (interim, pre-Rust):**
+- [ ] **`runectl` + shell wrapper architecture** - Split the CLI into `runectl` (backing implementation) and `rune()` (thin shell function wrapper). Enables shell-level operations a binary can't do (source, exec, env export) while keeping the implementation portable across shells and rewrite targets.
+
+  **Architecture:**
+  - `runectl` — the actual implementation. Today: shell script wrapping `just`. Later: Rust/Deno binary. Available in all shell states via PATH (set in zshenv). Handles all real work including secrets decryption.
+  - `rune()` — permanent thin shell function (~10 lines). Calls `runectl`, then handles shell-level post-actions (source changed configs, exec for full restart, export env vars). Only exists in interactive shells (via zshrc/bashrc/config.fish).
+
+  **Shell reload mechanism:**
+  - `runectl` (via update/upgrade) creates `.state/needs-reload` when shell configs change
+  - File contains either specific file paths to re-source, or `exec` for a full shell restart
+  - `rune()` reads the flag after `runectl` returns, sources listed files or runs `exec $SHELL`
+  - Targeted sourcing avoids PATH duplication — only dotfiles-managed files (functions, aliases) are re-evaluated, never the PATH/tool-init lines
+  - update detects changed files via `git diff --name-only` against `config/zsh/`; upgrade knows what it re-linked
+  - No dependency on `typeset -U path` or full zshrc re-sourcing
+
+  **Conflict detection (auto-naming):**
+  - `runectl init <shell>` checks `command -v rune` (finds only binaries, not functions)
+  - No conflict → generates `rune()` wrapper
+  - Conflict found (e.g., Rune language CLI) → generates `runectl()` wrapper, emits a note
+  - Override with `--name <name>`: `runectl init zsh --name rn` for custom name
+  - Custom name persisted in `.dotfiles.toml` so subsequent `runectl init` uses it automatically
+
+  **Non-interactive shim:**
+  - `runectl shim --name rn --path ~/.local/bin` creates a symlink for non-interactive contexts
+  - Interactive: `rn` is the shell function (from init)
+  - Non-interactive: `rn` is a symlink to `runectl` on PATH
+  - Rust/Deno binary can use argv[0] detection (busybox pattern) for zero-cost aliasing
+
+  **Multi-shell support (like starship/oh-my-posh):**
   ```bash
-  # Shell function (in zshrc or similar)
-  rune() {
-      just --justfile "${DOTFILES_DIR:-$HOME/.dotfiles}/justfile" \
-           --working-directory "${DOTFILES_DIR:-$HOME/.dotfiles}" "$@"
-  }
+  eval "$(runectl init zsh)"                    # zsh
+  eval "$(runectl init bash)"                   # bash
+  runectl init fish | source                    # fish
+  eval (runectl init elvish | slurp)            # elvish
+  runectl init nu | source                      # nushell
   ```
+  - Each shell gets the wrapper function in its native syntax
+  - Only Unix shells — no Windows/PowerShell support needed
+  - The binary generates shell-specific code; the wrapper stays ~10 lines per shell
 
-  **Considerations:**
-  - Should support tab completion (wire up just's completions for the alias)
-  - Should work with subcommands: `rune upgrade`, `rune secrets status`, `rune dev lint`
-  - `DOTFILES_DIR` env var makes it work across different install locations
-  - Add to core bundle's shell config so it's always available
-  - After Rust rewrite, `rune` becomes the actual binary
+  **All four shell states supported:**
+  | State | `runectl` (binary) | `rune()` (function) |
+  |-------|-------------------|-------------------|
+  | Interactive login | via PATH (zshenv) | via zshrc |
+  | Interactive non-login | via PATH (zshenv) | via zshrc |
+  | Non-interactive login | via PATH (zshenv) | not needed |
+  | Non-interactive non-login | via PATH (zshenv) | not needed |
+
+  **Non-interactive secrets (why all states matter):**
+  - `runectl` detects its context: `[[ -t 0 ]]` → has terminal → can prompt
+  - Interactive: prompt / Touch ID / Keychain
+  - Non-interactive (cron, CI, scripts, SSH commands): Keychain with pre-authorized ACL, gpg-agent/ssh-agent cache from prior interactive session
+  - No human present → skip Touch ID, skip prompts, fail gracefully (not hang)
+  - Critical for: automated secret decryption, scheduled backups, CI pipelines
+
+  **Implementation phases:**
+  1. **Now (shell scripts):** Rename backing to `runectl` shell script, thin `rune()` wrapper with reload mechanism, conflict detection as a comment
+  2. **Rust rewrite:** `runectl` becomes compiled Rust binary (clap + inquire + ratatui), gains `init`/`shim` subcommands, multi-shell support, context-aware secrets auth.
+- [x] **Spotlight volume management** - UUID-based local config for multi-boot macOS Spotlight indexing control. Each macOS installation independently manages shared volumes via `platforms/macos/daemons/spotlight` with LaunchDaemon (`RunAtLoad` + `WatchPaths` on `/Volumes`), boot volume detection via device ID comparison, gum/plain interactive picker, and automatic boot volume safety net. Managed via `rune daemons` TUI or `rune daemons spotlight` CLI.
+
+- [ ] **Spotlight dependency hygiene** - `mdfind` sweep during `rune upgrade` to drop `.metadata_never_index` into dependency directories (`node_modules`, `.venv`, `target/`, `build/`, `.gradle/`, `__pycache__`). Static `.metadata_never_index` for `/opt/homebrew`. No FSEvents watcher — the sweep during upgrade is sufficient.
 
 - [ ] **Dotfiles health check** - A self-healing `rune doctor` command (like `brew doctor`) that diagnoses AND auto-fixes common issues. Should detect problems, explain what's wrong, and offer to fix them automatically.
 
@@ -61,7 +106,7 @@ Planned improvements and ideas for the dotfiles system.
   - Can't just check for `.trusted` existence - malicious repos could include it
   - The file must contain YOUR specific UUID to be trusted
   - UUID is generated once with `uuidgen` (works on macOS + Linux)
-  - Stored in encrypted secrets, so `just secrets restore` gives same trust on any machine/OS
+  - Stored in encrypted secrets, so `rune secrets restore` gives same trust on any machine/OS
 
   **Implementation:**
   ```bash
@@ -108,7 +153,7 @@ Planned improvements and ideas for the dotfiles system.
   - `git trust --always` appends `always-trust-secret` to `.trusted`
   - The global hook determines trust level by WHICH secret matches, not a label
   - **trusted** (matches `trust-secret`): Repo hooks run, but trust is revoked if hooks change via `git pull`/`fetch`/`merge` (post-merge hook detects changed hook files and removes this installation's line from `.trusted`). User is notified and must re-trust.
-  - **always-trust** (matches `always-trust-secret`): For repos you fully control (your own dotfiles, employer repos). Hook changes don't revoke trust.
+  - **always-trust** (matches `always-trust-secret`): For repos you fully control (your own dotfiles, trusted org repos). Hook changes don't revoke trust.
 
   **Why this is tamper-resistant:**
   - UUIDs in `.trusted` are opaque — an attacker can't tell which is regular vs always-trust
@@ -121,7 +166,7 @@ Planned improvements and ideas for the dotfiles system.
   - **Implementation priority**: The global hook wrapper must verify trust BEFORE executing any repo hooks — this is the critical correctness requirement.
 
   **Migration for existing installations:**
-  - `secrets init`/`restore` and `just upgrade` should generate trust secrets if they don't exist
+  - `secrets init`/`restore` and `rune upgrade` should generate trust secrets if they don't exist
   - Global hook gracefully no-ops when secrets are missing (no secrets = no repo hooks run, same as current behavior)
   - Existing repos must be explicitly trusted — no auto-migration to prevent unintended hook execution
 
@@ -141,13 +186,13 @@ Planned improvements and ideas for the dotfiles system.
   - Add `git-trust --revoke` to remove current secrets from `.trusted`
   - Add `git-trust-scan` command to discover repos with untrusted hooks
 
-- [ ] **Decouple scripts from dotfiles** - Extract `just` commands and scripts into standalone tools that can be invoked from anywhere without being in the dotfiles directory. Partially addressed by the `rune` shell function; full decoupling planned for the Rust rewrite.
+- [ ] **Decouple scripts from dotfiles** - Extract `just` commands and scripts into standalone tools that can be invoked from anywhere without being in the dotfiles directory. Partially addressed by `rune` shell function; fully solved by the `runectl` binary architecture (see High Priority) and Rust/Deno rewrite.
 
 - [ ] **Linux support** - Add `platforms/linux/` with bundles. The shared library (common.sh) and bundle system are designed to support this.
 
 - [ ] **Bundle-specific config overrides** - Utilize the `config/` directory within bundles for context-specific overrides: gitconfig (different email per bundle), SSH configs, environment variables, additional tooling, etc. Bundles that need specialized configuration beyond their Brewfile and setup.sh can layer overrides without affecting other bundles.
 
-- [ ] **Shell completions** - Add zsh completions for `just` commands and custom scripts.
+- [ ] **Shell completions** - Add zsh completions for `rune` commands and custom scripts.
 
 - [ ] **Secrets workflow documentation** - Document the full age/sops secrets workflow: init, encrypt, decrypt, and how to add new secrets.
 
@@ -157,7 +202,7 @@ Planned improvements and ideas for the dotfiles system.
 
 - [x] **PR/branch preview** - `rune dev preview` for snapshot-backed preview of PRs, branches, and commits with dirty state preservation. Smart detection, auto brew lock, activity tracking with 24h stale warnings.
 
-- [ ] **Expandable dev locks** - Extend `rune dev lock` to support `--prefs`, `--dock`, `--all` to skip preferences.sh, dock.sh, or everything except symlinks/configs during testing.
+- [ ] **Expandable dev locks** - Extend `rune dev lock` to support `--prefs`, `--dock`, `--all` to skip preferences, dock, or everything except symlinks/configs during testing.
 
 - [ ] **APFS snapshot integration** - Full-system rollback for test installations (SIP disabled only). Separate repo for dangerous tooling, gated behind `rune dev init` + SIP check.
 
@@ -170,7 +215,7 @@ Planned improvements and ideas for the dotfiles system.
   - No seal/SSV concerns — all changes are on the data volume
 
   **Preferences rollback (subset, no SIP required):**
-  - Snapshot `~/Library/Preferences/` before running preferences.sh/dock.sh
+  - Snapshot `~/Library/Preferences/` before running preferences/dock
   - Diff plists before/after to log exactly what changed
   - Restore via `defaults import` + service restart (`cfprefsd`, `Dock`, `Finder`, `SystemUIServer`)
   - Classify changes: `[safe]` restorable, `[sudo]` needs elevation, `[blocked]` SIP-protected
@@ -186,14 +231,14 @@ Planned improvements and ideas for the dotfiles system.
 
   **Implementation:**
   - Add `.dev/hooks/pre-push` hook script
-  - Hook runs `just dev lint` + commit message/branch name validation
+  - Hook runs `rune dev lint` + commit message/branch name validation
   - On failure: show errors, prompt `Push anyway? [y/N]` (default: no)
-  - Install via `just dev setup` or document manual `git config core.hooksPath`
+  - Install via `rune dev setup` or document manual `git config core.hooksPath`
   - Note: If the global git hooks system (above) is implemented first, this hook would be installed automatically via the trust mechanism rather than manual setup
 
 ## Long Term
 
-- [ ] **Rust rewrite** - Rewrite core dotfiles tooling in Rust, replacing bash scripts with a compiled binary. Enables proper error handling, cross-platform support, and an extension architecture. Can still shell out to bash/zsh for simple tasks (symlinks, brew, etc.).
+- [ ] **Rust rewrite (`runectl`)** - Rewrite `runectl` in Rust using clap + inquire + ratatui. Starts as a dispatch table (Phase 1: clap routes subcommands to existing bash scripts), adds interactive prompts (Phase 2: inquire replaces gum/bash menus), then full-screen TUI (Phase 3: ratatui for bootmenu zones, daemons TUI), then incremental logic migration (Phase 4). No intermediate language step. The `runectl` + shell wrapper architecture (see High Priority) is designed for this — `runectl` becomes the binary, `rune()` shell function stays unchanged. Gains `runectl init <shell>` for multi-shell support, `runectl shim` for non-interactive aliasing, and context-aware secrets auth.
 
 - [ ] **Dotfiles config file** - Add `.dotfiles.toml` for user preferences and feature toggles. Gate features (secrets, cloud backup, GPG keychain import) via config so users can opt out. Built on the Rust rewrite, design the schema to support extension selection.
 
@@ -256,4 +301,7 @@ Planned improvements and ideas for the dotfiles system.
 - [x] Fix install.sh tee redirect corrupting new shell (restore fd before exec)
 - [x] Add `just` and GPG packages to core bundle
 - [x] Add zprofile for non-interactive login shells
+- [x] Add daemon manager TUI (`scripts/daemons`) with curses interface, orphan detection, and CLI delegation
+- [x] Add GitHub release helpers (`scripts/lib/github.sh`) for downloading release tarballs
+- [x] Replace `just` → `rune` in all user-facing script messages
 - [x] Document shell state coverage (zshrc/zshenv/zprofile)
