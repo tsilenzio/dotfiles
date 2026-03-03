@@ -8,6 +8,9 @@ not_found_auto_install = true
 # Trust config files in code directories without prompts
 trusted_config_paths = ["/Volumes/Code"]
 
+[settings.ruby]
+compile = false
+
 [env]
 MISE_DEFAULT_CONFIG_FILENAME = "mise.local.toml"
 
@@ -19,3 +22,12 @@ go = "latest"
 python = "latest"
 zig = "latest"
 lua = "latest"
+uv = "latest"
+java = "latest"
+ruby = "latest"
+dotnet = "latest"
+gradle = "latest"
+cmake = "latest"
+cocogitto = "latest"
+lefthook = "latest"
+task = "latest"

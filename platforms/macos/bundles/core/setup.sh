@@ -22,9 +22,6 @@ echo "Installing core packages..."
 ## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
-# Kill apps that auto-launch after installation
-killall "zoom.us" 2>/dev/null || true
-
 ## Strip Gatekeeper quarantine from cask apps defined in loaded Brewfiles
 echo ""
 echo "Clearing quarantine flags..."

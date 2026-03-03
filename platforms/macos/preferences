@@ -105,8 +105,8 @@ defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool fa
 # Group windows by application (Expose)
 defaults write com.apple.dock expose-group-apps -bool true
 
-# Enable drag windows to top for Mission Control
-defaults write com.apple.dock wvous-tl-corner -int 2
+# Disable top-left hot corner (no action)
+defaults write com.apple.dock wvous-tl-corner -int 0
 defaults write com.apple.dock wvous-tl-modifier -int 0
 
 ## Displays

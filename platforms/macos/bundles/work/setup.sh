@@ -22,6 +22,9 @@ echo "Installing work packages..."
 ## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
+# Kill apps that auto-launch after installation
+killall "zoom.us" 2>/dev/null || true
+
 ## Bundle-specific config overrides
 if [[ -d "$BUNDLE_DIR/config" ]]; then
     echo ""

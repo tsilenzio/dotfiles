@@ -1,11 +1,8 @@
 # ============================================================================
-# Oh-My-Zsh Replacement Settings
+# Shell Defaults
 # ============================================================================
-# This file contains all the settings that Oh-My-Zsh provides by default.
-# Review each section and decide what you want to keep.
-#
-# To use: source this file from your main zshrc
-# Usage: source ~/.dotfiles/zshrc.omz
+# History, completion, keybindings, directory navigation, and aliases.
+# Based on defaults from Oh-My-Zsh (https://github.com/ohmyzsh/ohmyzsh).
 # ============================================================================
 
 # ============================================================================
@@ -42,7 +39,6 @@ setopt always_to_end             # Move cursor to end of word after completion
 # Completion styling
 zstyle ':completion:*:*:*:*:*' menu select                    # Use arrow keys to navigate menu
 zstyle ':completion:*' matcher-list 'm:{[:lower:][:upper:]}={[:upper:][:lower:]}' 'r:|=*' 'l:|=* r:|=*'  # Case-insensitive, partial-word, substring completion
-zstyle ':completion:*' list-colors ''                         # Enable colored completion
 zstyle ':completion:*' special-dirs true                      # Complete . and .. directories
 zstyle ':completion:*' use-cache yes                          # Use cache for faster completions
 zstyle ':completion:*' cache-path ~/.zsh/cache                # Cache location
@@ -184,6 +180,37 @@ setopt auto_cd                   # Type 'Desktop' instead of 'cd Desktop'
 setopt auto_pushd                # Push directories onto stack automatically
 setopt pushd_ignore_dups         # Don't push duplicates onto stack
 setopt pushdminus                # Swap meaning of +/- in directory stack
+
+# ============================================================================
+# TERMINAL TITLE
+# ============================================================================
+# Set tab/window title to current directory and running command
+function _set_terminal_title_preexec() {
+  # Show running command in title
+  print -Pn "\e]2;${1:gs/%/%%}\a"
+}
+function _set_terminal_title_precmd() {
+  # Show current directory in title
+  print -Pn "\e]2;%~\a"
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec _set_terminal_title_preexec
+add-zsh-hook precmd _set_terminal_title_precmd
+
+# ============================================================================
+# COLORS
+# ============================================================================
+# LS_COLORS for completion menu and ls fallback
+export LSCOLORS="Gxfxcxdxbxegedabagacad"
+export LS_COLORS="di=1;36:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43"
+
+# Use LS_COLORS in completion menus
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+
+# Colored grep output
+alias grep='grep --color=auto'
+alias egrep='egrep --color=auto'
+alias fgrep='fgrep --color=auto'
 
 # ============================================================================
 # MISCELLANEOUS SHELL OPTIONS
@@ -483,5 +510,16 @@ alias gta='git tag -a'                           # Annotated tag
 export VIRTUAL_ENV_DISABLE_PROMPT=1
 
 # ============================================================================
-# END OF OH-MY-ZSH REPLACEMENT SETTINGS
+# ZSH PLUGINS (must be near end of file)
+# ============================================================================
+# Autosuggestions (grey inline suggestions from history)
+[[ -f /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && \
+    source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+
+# Syntax highlighting (green/red command validation — must be sourced last)
+[[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+    source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# ============================================================================
+# END OF SHELL DEFAULTS
 # ============================================================================
