@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: codesign-cert create <name> [--days <days>]
+       codesign-cert delete <name>
+
+Manage self-signed code signing certificates in the login keychain.
+
+Creates a self-signed certificate with code signing EKU, imports it into
+the login keychain, and sets the trust policy for codesigning. The resulting
+identity can be used with codesign -s and SIGNING_IDENTITY in mise.local.toml.
+
+Source: https://github.com/tsilenzio/dotfiles/blob/main/platforms/macos/bin/codesign-cert
+
+Commands:
+    create      Create a new certificate and import into keychain
+    delete      Remove certificate and key from keychain
+
+Arguments:
+    name        Signing identity name (used with codesign -s and SIGNING_IDENTITY)
+
+Options:
+    --days      Validity period in days (default: 3650, ~10 years). Only for create.
+    --help      Show this help message
+
+Examples:
+    codesign-cert create rune-keychain-dev
+    codesign-cert create my-tool-dev --days 7300
+    codesign-cert delete rune-keychain-dev
+EOF
+    exit 0
+}
+
+# --- Parse subcommand ---
+COMMAND="${1:-}"
+
+case "$COMMAND" in
+    create|delete) shift ;;
+    --help|-h|"") usage ;;
+    -*) echo "error: unknown option: $COMMAND" >&2; echo "Run 'codesign-cert --help' for usage." >&2; exit 1 ;;
+    *) echo "error: unknown command: $COMMAND" >&2; echo "Run 'codesign-cert --help' for usage." >&2; exit 1 ;;
+esac
+
+# --- Parse remaining arguments ---
+NAME=""
+DAYS=3650
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --days)
+            DAYS="${2:?--days requires a value}"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            ;;
+        -*)
+            echo "error: unknown option: $1" >&2
+            echo "Run 'codesign-cert --help' for usage." >&2
+            exit 1
+            ;;
+        *)
+            if [[ -n "$NAME" ]]; then
+                echo "error: unexpected argument: $1" >&2
+                exit 1
+            fi
+            NAME="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$NAME" ]]; then
+    echo "error: certificate name is required" >&2
+    echo "Run 'codesign-cert --help' for usage." >&2
+    exit 1
+fi
+
+KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+
+# --- Delete ---
+if [[ "$COMMAND" == "delete" ]]; then
+    # Find all certificate hashes matching the name — delete by hash to avoid
+    # "ambiguous, matches more than one certificate" errors from duplicate certs.
+    HASHES=$(security find-certificate -a -c "$NAME" -Z "$KEYCHAIN" \
+        | grep "SHA-1" | awk '{print $NF}')
+
+    if [[ -z "$HASHES" ]]; then
+        echo "error: no certificates found matching \"$NAME\"" >&2
+        exit 1
+    fi
+
+    COUNT=$(echo "$HASHES" | wc -l | tr -d ' ')
+    echo "Deleting $COUNT certificate(s) matching \"$NAME\"..."
+
+    echo "$HASHES" | while read -r HASH; do
+        security delete-certificate -Z "$HASH" -t "$KEYCHAIN"
+    done
+
+    echo "Done. Identity \"$NAME\" has been removed."
+    exit 0
+fi
+
+# --- Create ---
+
+# Check if identity already exists
+if security find-identity -v -p codesigning | grep -q "\"$NAME\""; then
+    echo "error: signing identity \"$NAME\" already exists in keychain" >&2
+    echo "hint: remove it first with: codesign-cert delete \"$NAME\"" >&2
+    exit 1
+fi
+
+# Temp directory with cleanup
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+KEY="$TMPDIR/key.pem"
+CERT="$TMPDIR/cert.pem"
+P12="$TMPDIR/cert.p12"
+CNF="$TMPDIR/openssl.cnf"
+
+# Generate RSA private key
+echo "Generating private key..."
+openssl genrsa -out "$KEY" 2048 2>/dev/null
+
+# Create openssl config with code signing extensions
+cat > "$CNF" <<EOF
+[req]
+distinguished_name = dn
+prompt = no
+
+[dn]
+CN = $NAME
+
+[codesign]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, codeSigning
+EOF
+
+# Create self-signed certificate
+echo "Creating self-signed certificate (valid for $DAYS days)..."
+openssl req -new -x509 \
+    -key "$KEY" \
+    -out "$CERT" \
+    -days "$DAYS" \
+    -config "$CNF" \
+    -extensions codesign
+
+# Package as .p12 for keychain import
+# Ephemeral password — avoids the null-vs-empty-string ambiguity in PKCS#12
+# that causes macOS import to reject empty passwords.
+# The .p12 is a temp file deleted on exit, so this password doesn't matter.
+P12_PASS="codesign-cert-tmp"
+
+echo "Packaging as .p12..."
+openssl pkcs12 -export \
+    -inkey "$KEY" \
+    -in "$CERT" \
+    -out "$P12" \
+    -name "$NAME" \
+    -passout "pass:$P12_PASS"
+
+# Import into login keychain
+echo "Importing into login keychain..."
+security import "$P12" \
+    -k "$KEYCHAIN" \
+    -T /usr/bin/codesign \
+    -f pkcs12 \
+    -P "$P12_PASS"
+
+# Set trust policy (this will prompt for authentication)
+echo ""
+echo "Setting trust policy (you will be prompted to authenticate)..."
+security add-trusted-cert -p codeSign -r trustRoot -k "$KEYCHAIN" "$CERT"
+
+# Verify
+echo ""
+if security find-identity -v -p codesigning | grep -q "\"$NAME\""; then
+    echo "Success! Signing identity \"$NAME\" is ready."
+    echo ""
+    echo "Add to your mise.local.toml:"
+    echo ""
+    echo "  [env]"
+    echo "  SIGNING_IDENTITY = \"$NAME\""
+    echo ""
+    echo "Verify anytime with:"
+    echo "  security find-identity -v -p codesigning"
+else
+    echo "error: certificate was imported but not found as a codesigning identity" >&2
+    echo "hint: check manually with: security find-identity -v -p codesigning" >&2
+    exit 1
+fi

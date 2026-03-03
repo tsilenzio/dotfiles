@@ -3,17 +3,24 @@ font-family = SauceCodePro Nerd Font
 font-size = 14
 
 # Theme
-theme = Catppuccin Mocha
+theme = onenord
 
 # Cursor
 cursor-style = bar
 cursor-style-blink = false
+cursor-color = #ffffff
 
 # Window
+window-decoration = true
 window-padding-x = 12
 window-padding-y = 12
+window-padding-color = background
 macos-titlebar-style = tabs
 window-save-state = always
+background-opacity = 0.85
+background-blur-radius = 20
+mouse-hide-while-typing = true
+window-theme = ghostty
 
 # macOS
 macos-option-as-alt = true

@@ -22,8 +22,10 @@ echo "Installing develop packages..."
 ## Install Brewfile
 install_brewfile "$BUNDLE_DIR/Brewfile"
 
-# Kill apps that auto-launch after installation
-killall "zoom.us" 2>/dev/null || true
+# Fix pinentry-touchid symlink for Touch ID GPG signing
+if command -v pinentry-touchid &>/dev/null; then
+    pinentry-touchid -fix
+fi
 
 ## Configure symlinks (base configs)
 echo ""

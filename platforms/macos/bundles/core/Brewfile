@@ -8,6 +8,8 @@ brew "fzf"                              # Fuzzy finder
 brew "zoxide"                           # Smart cd replacement
 brew "broot"                            # Tree navigation and fuzzy finder
 brew "atuin"                            # Shell history sync
+brew "zsh-syntax-highlighting"          # Command validation highlighting
+brew "zsh-autosuggestions"              # Inline history suggestions
 
 # File Operations & Search
 brew "ripgrep"                          # Fast recursive search (rg)
@@ -32,9 +34,6 @@ brew "coreutils"                        # GNU core utilities
 brew "age"                              # Modern encryption
 brew "sops"                             # Secrets management
 brew "gnupg"                            # GPG encryption
-brew "pinentry-mac"                     # macOS pinentry for GPG
-tap "jorgelbg/tap"
-brew "jorgelbg/tap/pinentry-touchid"    # Touch ID for GPG passphrase
 
 # Task Runner
 brew "just"                             # Command runner for justfile

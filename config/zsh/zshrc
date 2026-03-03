@@ -2,9 +2,9 @@
 # Zsh Configuration
 # ============================================================================
 
-# Load Oh-My-Zsh replacement settings
-if [[ -f ~/.dotfiles/config/zsh/zshrc.omz ]]; then
-    source ~/.dotfiles/config/zsh/zshrc.omz
+# Load shell defaults (history, completion, keybindings, aliases)
+if [[ -f ~/.dotfiles/config/zsh/defaults.zsh ]]; then
+    source ~/.dotfiles/config/zsh/defaults.zsh
 fi
 
 # ============================================================================

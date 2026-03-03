@@ -3,12 +3,14 @@ cask_args no_quarantine: true
 
 # Taps
 tap "sijanc147/formulas"
+tap "raine/claude-history"
 
 # Git & Version Control
 brew "gh"                               # GitHub CLI
 brew "git-delta"                        # Syntax-highlighting diff viewer
 brew "lazygit"                          # TUI for git operations
 brew "bfg"                              # Git repo cleaner
+cask "gitbutler"                        # Git branch management
 # brew "tig"                            # Text-mode git interface (evaluate)
 # brew "git-extras"                     # Git utilities collection (evaluate)
 # brew "gitui"                          # Blazing fast git TUI (evaluate)
@@ -42,6 +44,9 @@ brew "watchman"                         # File watcher (Meta)
 # brew "oha"                            # HTTP load testing (evaluate)
 
 # Security & Secrets
+brew "pinentry-mac"                     # macOS pinentry for GPG
+tap "jorgelbg/tap"
+brew "jorgelbg/tap/pinentry-touchid"    # Touch ID for GPG passphrase
 # brew "gitleaks"                       # Scan for secrets in repos (evaluate)
 # brew "trufflehog"                     # Find secrets in git history (evaluate)
 
@@ -50,6 +55,7 @@ brew "mise"                             # Version manager
 brew "direnv"                           # Auto-load environment variables
 brew "shellcheck"                       # Shell script linter
 brew "docker"                           # Container CLI
+brew "container"                        # Apple containerization (microVMs)
 brew "lima"                             # Linux VMs for macOS
 brew "hyperfine"                        # Command benchmarking
 # brew "tokei"                          # Code statistics (evaluate)
@@ -79,8 +85,11 @@ brew "ctop"                             # Container monitoring
 
 # AI/LLM Tools
 brew "gemini-cli"                       # Google Gemini CLI
+brew "raine/claude-history/claude-history"  # Claude conversation history CLI
 cask "codex"                            # OpenAI Codex CLI
 cask "claude"                           # Anthropic Claude
+cask "claude-devtools"                  # Claude developer tools
+cask "claude-island"                    # Claude Island
 cask "chatgpt"                          # OpenAI ChatGPT
 # brew "mods"                           # Pipe-friendly AI (evaluate)
 # brew "fabric"                         # AI workflow patterns (evaluate)
