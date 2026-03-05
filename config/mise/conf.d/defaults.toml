@@ -15,19 +15,25 @@ compile = false
 MISE_DEFAULT_CONFIG_FILENAME = "mise.local.toml"
 
 [tools]
+# Languages
 node = "lts"
-pnpm = "latest"
+python = "latest"
 rust = "latest"
 go = "latest"
-python = "latest"
 zig = "latest"
 lua = "latest"
-uv = "latest"
 java = "latest"
 ruby = "latest"
 dotnet = "latest"
-gradle = "latest"
-cmake = "latest"
+deno = "latest"
+bun = "latest"
+dart = "latest"
+flutter = "latest"
+
+# Tools
+pnpm = "latest"
+uv = "latest"
+cargo-binstall = "latest"
 cocogitto = "latest"
 lefthook = "latest"
 task = "latest"
