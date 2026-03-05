@@ -1,0 +1,31 @@
+# Zsh (individual files — defaults.zsh and rune.zsh are sourced, not linked)
+zsh/zshrc      -> $HOME/.zshrc
+zsh/zshenv     -> $HOME/.zshenv
+zsh/zprofile   -> $HOME/.zprofile
+
+# Git
+git/gitconfig  -> $HOME/.gitconfig
+git/gitignore  -> $HOME/.gitignore
+
+# Ghostty (entire directory: config, themes, shaders)
+ghostty/ -> $HOME/.config/ghostty/
+
+# Starship
+starship/starship.toml -> $HOME/.config/starship.toml
+
+# Mise (conf.d/ so mise use -g writes to config.toml without dirtying git)
+mise/conf.d/ -> $HOME/.config/mise/conf.d/
+
+# Atuin (shell history sync)
+atuin/config.toml -> $HOME/.config/atuin/config.toml
+
+# WezTerm
+wezterm/wezterm.lua -> $HOME/.config/wezterm/wezterm.lua
+
+# SSH
+ssh/config -> $HOME/.ssh/config
+@chmod 700 $HOME/.ssh
+
+# GnuPG
+gnupg/gpg-agent.conf -> $HOME/.gnupg/gpg-agent.conf
+@chmod 700 $HOME/.gnupg
