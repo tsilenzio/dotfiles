@@ -28,15 +28,18 @@ echo "Configuring minimal symlinks..."
 
 ensure_config_dirs
 
-# Only essential symlinks (subset of link_base_configs)
-CONFIG_DIR="$DOTFILES_DIR/config"
-
-[[ -f "$CONFIG_DIR/zsh/zshrc" ]] && safe_link "$CONFIG_DIR/zsh/zshrc" "$HOME/.zshrc"
-[[ -f "$CONFIG_DIR/zsh/zshenv" ]] && safe_link "$CONFIG_DIR/zsh/zshenv" "$HOME/.zshenv"
-[[ -f "$CONFIG_DIR/zsh/zprofile" ]] && safe_link "$CONFIG_DIR/zsh/zprofile" "$HOME/.zprofile"
-[[ -f "$CONFIG_DIR/git/gitconfig" ]] && safe_link "$CONFIG_DIR/git/gitconfig" "$HOME/.gitconfig"
-[[ -f "$CONFIG_DIR/git/gitignore" ]] && safe_link "$CONFIG_DIR/git/gitignore" "$HOME/.gitignore"
-[[ -f "$CONFIG_DIR/gnupg/gpg-agent.conf" ]] && safe_link "$CONFIG_DIR/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
+if [[ -f "$BUNDLE_DIR/manifest" ]]; then
+    apply_manifest "$BUNDLE_DIR/manifest" "$DOTFILES_DIR/config"
+else
+    # Legacy fallback
+    CONFIG_DIR="$DOTFILES_DIR/config"
+    [[ -f "$CONFIG_DIR/zsh/zshrc" ]] && safe_link "$CONFIG_DIR/zsh/zshrc" "$HOME/.zshrc"
+    [[ -f "$CONFIG_DIR/zsh/zshenv" ]] && safe_link "$CONFIG_DIR/zsh/zshenv" "$HOME/.zshenv"
+    [[ -f "$CONFIG_DIR/zsh/zprofile" ]] && safe_link "$CONFIG_DIR/zsh/zprofile" "$HOME/.zprofile"
+    [[ -f "$CONFIG_DIR/git/gitconfig" ]] && safe_link "$CONFIG_DIR/git/gitconfig" "$HOME/.gitconfig"
+    [[ -f "$CONFIG_DIR/git/gitignore" ]] && safe_link "$CONFIG_DIR/git/gitignore" "$HOME/.gitignore"
+    [[ -f "$CONFIG_DIR/gnupg/gpg-agent.conf" ]] && safe_link "$CONFIG_DIR/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
+fi
 
 echo ""
 echo "Test setup complete!"
