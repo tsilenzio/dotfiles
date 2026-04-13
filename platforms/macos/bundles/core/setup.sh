@@ -68,13 +68,11 @@ if command -v atuin &>/dev/null && [[ ! -f "$HOME/.local/share/atuin/key" ]]; th
             echo ""
             echo "Importing existing shell history..."
             atuin import auto
-            atuin sync
+            echo "  Sync starts on your next shell session."
             ;;
         l|L|login)
             atuin login
-            echo ""
-            echo "Syncing history from server..."
-            atuin sync
+            echo "  Sync starts on your next shell session."
             ;;
         *)
             echo "  Skipped. Run 'atuin register' or 'atuin login' later."
