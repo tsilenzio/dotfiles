@@ -5,17 +5,26 @@ sync_address = "https://api.atuin.sh"
 
 # Search behavior
 search_mode = "fuzzy"
+search_mode_shell_up_key_binding = "prefix"
 filter_mode = "global"
-filter_mode_shell_up_key_binding = "host"
+filter_mode_shell_up_key_binding = "workspace"
+workspaces = true
 
 # UI
-style = "auto"
 show_preview = true
 enter_accept = true
+command_chaining = true
+
+# Ctrl+R: fullscreen search. Up arrow: ~10 visible results.
+style = "auto"
 inline_height = 0
+inline_height_shell_up_key_binding = 16
 
 # Security: filter secrets from history
 secrets_filter = true
+
+[search]
+filters = ["directory", "workspace", "session", "session-preload", "host", "global"]
 
 [sync]
 records = true

@@ -25,12 +25,10 @@ install_brewfile "$BUNDLE_DIR/Brewfile"
 # Kill apps that auto-launch after installation
 killall "zoom.us" 2>/dev/null || true
 
-## Bundle-specific config overrides
-if [[ -d "$BUNDLE_DIR/config" ]]; then
-    echo ""
-    echo "Applying work config overrides..."
-    apply_config_overrides "$BUNDLE_DIR"
-fi
+## Bundle-specific config tweaks
+echo ""
+echo "Applying work-specific config overrides..."
+"$BUNDLE_DIR/tweak.sh"
 
 echo ""
 echo "Work setup complete!"
