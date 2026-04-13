@@ -22,6 +22,7 @@ git clone https://github.com/tsilenzio/dotfiles.git ~/.dotfiles
 ## What's Included
 
 - **Zsh** configuration with Starship prompt
+- **Atuin** shell history sync with E2E encryption
 - **Git** config with delta diffs and GPG signing
 - **Ghostty** terminal configuration (with WezTerm fallback)
 - **Homebrew** packages organized by bundle
@@ -72,6 +73,7 @@ just secrets ...      # Secrets management (init, backup, restore)
 ~/.dotfiles/
 ├── config/                    # Base configurations
 │   ├── manifest              # Declares what gets linked where
+│   ├── atuin/
 │   ├── ghostty/
 │   ├── git/
 │   ├── gnupg/
@@ -94,6 +96,7 @@ just secrets ...      # Secrets management (init, backup, restore)
 │       │   ├── personal/
 │       │   ├── work/
 │       │   └── test/
+│       ├── daemons/            # Launch daemons/agents (spotlight)
 │       ├── install              # macOS platform installer
 │       ├── preflight            # Sudo caching / preflight checks
 │       ├── preferences          # macOS system preferences

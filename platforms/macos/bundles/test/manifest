@@ -1,0 +1,12 @@
+# Minimal symlinks for VM testing
+zsh/zshrc      -> $HOME/.zshrc
+zsh/zshenv     -> $HOME/.zshenv
+zsh/zprofile   -> $HOME/.zprofile
+
+# Git
+git/gitconfig  -> $HOME/.gitconfig
+git/gitignore  -> $HOME/.gitignore
+
+# GnuPG
+gnupg/gpg-agent.conf -> $HOME/.gnupg/gpg-agent.conf
+@chmod 700 $HOME/.gnupg

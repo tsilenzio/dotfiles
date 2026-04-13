@@ -11,6 +11,7 @@ fi
 # Environment Variables
 # ============================================================================
 export COPYFILE_DISABLE=1               # Don't create ._* files on macOS
+export GPG_TTY=$(tty)                   # Required for pinentry-touchid
 
 # ============================================================================
 # PATH Configuration
