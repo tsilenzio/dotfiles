@@ -56,6 +56,9 @@ if [[ -o interactive ]]; then
     elif command -v fzf &> /dev/null; then
         eval "$(fzf --zsh)"
     fi
+
+    # Atuin (shell history sync)
+    command -v atuin &> /dev/null && eval "$(atuin init zsh)"
 fi
 
 # ============================================================================

@@ -55,5 +55,32 @@ fi
 ## Restore file-type licenses (auto-import only)
 "$DOTFILES_DIR/scripts/licenses" --auto --bundle "$BUNDLE_NAME"
 
+## Atuin first-time setup (register or login for history sync)
+if command -v atuin &>/dev/null && [[ ! -f "$HOME/.local/share/atuin/key" ]]; then
+    echo ""
+    echo "Atuin shell history sync setup..."
+    echo "  Options: register (new account) or login (existing account)"
+    echo -n "  Setup atuin sync? [r]egister/[l]ogin/[s]kip: "
+    read -r atuin_choice < /dev/tty
+    case "$atuin_choice" in
+        r|R|register)
+            atuin register
+            echo ""
+            echo "Importing existing shell history..."
+            atuin import auto
+            atuin sync
+            ;;
+        l|L|login)
+            atuin login
+            echo ""
+            echo "Syncing history from server..."
+            atuin sync
+            ;;
+        *)
+            echo "  Skipped. Run 'atuin register' or 'atuin login' later."
+            ;;
+    esac
+fi
+
 echo ""
 echo "Core setup complete!"
