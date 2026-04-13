@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+
+# Manifest management CLI
+# Usage: scripts/manifest <command> [args]
+#
+# Commands:
+#   list                        Show all manifest entries
+#   add <source> <dest>         Add a file or directory link
+#   remove <source>             Remove an entry by source
+#   chmod <mode> <path>         Add a @chmod directive
+#
+# Flags:
+#   --bundle <name>             Target a bundle's manifest instead of base
+
+set -e
+
+DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# shellcheck source=scripts/lib/common.sh
+source "$DOTFILES_DIR/scripts/lib/common.sh"
+
+BUNDLE=""
+COMMAND=""
+ARGS=()
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --bundle)
+            BUNDLE="$2"
+            shift 2
+            ;;
+        --bundle=*)
+            BUNDLE="${1#--bundle=}"
+            shift
+            ;;
+        -*)
+            log_error "Unknown flag: $1"
+            exit 1
+            ;;
+        *)
+            if [[ -z "$COMMAND" ]]; then
+                COMMAND="$1"
+            else
+                ARGS+=("$1")
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Resolve manifest path
+resolve_manifest() {
+    if [[ -n "$BUNDLE" ]]; then
+        local bundle_dir="$DOTFILES_DIR/platforms/macos/bundles/$BUNDLE"
+        if [[ ! -d "$bundle_dir" ]]; then
+            log_error "Bundle not found: $BUNDLE"
+            exit 1
+        fi
+        echo "$bundle_dir/manifest"
+    else
+        echo "$DOTFILES_DIR/config/manifest"
+    fi
+}
+
+MANIFEST_FILE=$(resolve_manifest)
+
+# List all entries
+cmd_list() {
+    if [[ ! -f "$MANIFEST_FILE" ]]; then
+        log_warn "No manifest found at $MANIFEST_FILE"
+        return 0
+    fi
+
+    local label="base"
+    [[ -n "$BUNDLE" ]] && label="$BUNDLE"
+    log_info "Manifest entries ($label):"
+    echo ""
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+
+        # Print comments as-is for context
+        if [[ "$line" == \#* ]]; then
+            echo "  $line"
+            continue
+        fi
+
+        [[ -z "$line" ]] && continue
+
+        if [[ "$line" == @chmod\ * ]]; then
+            echo "  $line"
+        else
+            echo "  $line"
+        fi
+    done < "$MANIFEST_FILE"
+}
+
+# Check if an entry already exists (by source path)
+entry_exists() {
+    local source="$1"
+    [[ ! -f "$MANIFEST_FILE" ]] && return 1
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        [[ -z "$line" || "$line" == \#* ]] && continue
+
+        local line_src="${line%% ->*}"
+        line_src="${line_src%"${line_src##*[![:space:]]}"}"
+
+        [[ "$line_src" == "$source" ]] && return 0
+    done < "$MANIFEST_FILE"
+
+    return 1
+}
+
+# Find the longest source field for alignment
+max_source_width() {
+    local max=0
+    [[ ! -f "$MANIFEST_FILE" ]] && echo 0 && return
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        [[ -z "$line" || "$line" == \#* || "$line" == @chmod\ * ]] && continue
+
+        local src="${line%% ->*}"
+        src="${src%"${src##*[![:space:]]}"}"
+        local len=${#src}
+        [[ $len -gt $max ]] && max=$len
+    done < "$MANIFEST_FILE"
+
+    echo "$max"
+}
+
+# Add an entry
+cmd_add() {
+    if [[ ${#ARGS[@]} -lt 2 ]]; then
+        log_error "Usage: manifest add <source> <destination>"
+        exit 1
+    fi
+
+    local source="${ARGS[0]}"
+    local dest="${ARGS[1]}"
+
+    # Normalize ~ to $HOME in destination for storage
+    dest="${dest/#\~/$HOME}"
+    # Convert back to $HOME for manifest storage
+    dest="${dest/#$HOME/\$HOME}"
+
+    if entry_exists "$source"; then
+        log_warn "Entry already exists for: $source"
+        return 0
+    fi
+
+    # Validate source path exists (for base manifest)
+    if [[ -z "$BUNDLE" ]]; then
+        local full_source="$DOTFILES_DIR/config/$source"
+        if [[ "$source" == */ ]]; then
+            if [[ ! -d "$full_source" ]]; then
+                log_warn "Source directory not found: config/$source"
+            fi
+        else
+            if [[ ! -f "$full_source" ]]; then
+                log_warn "Source file not found: config/$source"
+            fi
+        fi
+    fi
+
+    # Create manifest if it doesn't exist
+    [[ ! -f "$MANIFEST_FILE" ]] && touch "$MANIFEST_FILE"
+
+    # Calculate alignment width
+    local width
+    width=$(max_source_width)
+    local src_len=${#source}
+    [[ $src_len -gt $width ]] && width=$src_len
+
+    # Append entry with aligned ->
+    printf '%-*s -> %s\n' "$width" "$source" "$dest" >> "$MANIFEST_FILE"
+
+    log_success "Added: $source -> $dest"
+}
+
+# Remove an entry
+cmd_remove() {
+    if [[ ${#ARGS[@]} -lt 1 ]]; then
+        log_error "Usage: manifest remove <source>"
+        exit 1
+    fi
+
+    local source="${ARGS[0]}"
+
+    if [[ ! -f "$MANIFEST_FILE" ]]; then
+        log_error "No manifest found"
+        exit 1
+    fi
+
+    if ! entry_exists "$source"; then
+        log_warn "No entry found for: $source"
+        return 0
+    fi
+
+    # Remove matching line (by source path)
+    local tmp
+    tmp=$(mktemp)
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        local trimmed="${line#"${line%%[![:space:]]*}"}"
+        if [[ "$trimmed" == "$source "* && "$trimmed" == *" -> "* ]]; then
+            continue
+        fi
+        echo "$line"
+    done < "$MANIFEST_FILE" > "$tmp"
+
+    mv "$tmp" "$MANIFEST_FILE"
+    log_success "Removed: $source"
+}
+
+# Add a chmod directive
+cmd_chmod() {
+    if [[ ${#ARGS[@]} -lt 2 ]]; then
+        log_error "Usage: manifest chmod <mode> <path>"
+        exit 1
+    fi
+
+    local mode="${ARGS[0]}"
+    local path="${ARGS[1]}"
+
+    # Normalize ~ to $HOME
+    path="${path/#\~/$HOME}"
+    path="${path/#$HOME/\$HOME}"
+
+    # Create manifest if it doesn't exist
+    [[ ! -f "$MANIFEST_FILE" ]] && touch "$MANIFEST_FILE"
+
+    # Check for existing chmod on same path
+    if grep -q "^@chmod [0-9]* ${path}$" "$MANIFEST_FILE" 2>/dev/null; then
+        log_warn "@chmod directive already exists for: $path"
+        return 0
+    fi
+
+    echo "@chmod $mode $path" >> "$MANIFEST_FILE"
+    log_success "Added: @chmod $mode $path"
+}
+
+# Dispatch
+case "$COMMAND" in
+    list)   cmd_list ;;
+    add)    cmd_add ;;
+    remove) cmd_remove ;;
+    chmod)  cmd_chmod ;;
+    "")
+        log_error "No command specified"
+        echo "Usage: manifest <list|add|remove|chmod> [args]"
+        exit 1
+        ;;
+    *)
+        log_error "Unknown command: $COMMAND"
+        echo "Usage: manifest <list|add|remove|chmod> [args]"
+        exit 1
+        ;;
+esac

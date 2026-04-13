@@ -4,15 +4,15 @@ Planned improvements and ideas for the dotfiles system.
 
 ## High Priority
 
-- [x] **gum integration** - Auto-download and cache Charmbracelet's gum for interactive TUI menus. `ensure_gum` in common.sh with GitHub release helpers in `scripts/lib/github.sh`. Used in spotlight picker with plain fallback.
+- [x] **gum integration:** Auto-download and cache Charmbracelet's gum for interactive TUI menus. `ensure_gum` in common.sh with GitHub release helpers in `scripts/lib/github.sh`. Used in spotlight picker with plain fallback.
 
-- [ ] **brew wrapper** - Create a wrapper script that intercepts `brew install` and prompts to add manually installed packages to a bundle's Brewfile. Helps maintain Brewfile hygiene.
+- [ ] **brew wrapper:** Create a wrapper script that intercepts `brew install` and prompts to add manually installed packages to a bundle's Brewfile. Helps maintain Brewfile hygiene.
 
-- [ ] **Test installation end-to-end** - Run through full install on a fresh VM to verify bundle structure, dependency resolution, and package installation.
+- [ ] **Test installation end-to-end:** Run through full install on a fresh VM to verify bundle structure, dependency resolution, and package installation.
 
-- [x] **Global dotfiles command (`rune`)** - Run dotfiles commands from anywhere without `cd ~/.dotfiles` first. Implemented as a shell function wrapping `just`.
+- [x] **Global dotfiles command (`rune`):** Run dotfiles commands from anywhere without `cd ~/.dotfiles` first. Implemented as a shell function wrapping `just`.
 
-- [ ] **`runectl` + shell wrapper architecture** - Split the CLI into `runectl` (backing implementation) and `rune()` (thin shell function wrapper). Enables shell-level operations a binary can't do (source, exec, env export) while keeping the implementation portable across shells and rewrite targets.
+- [ ] **`runectl` + shell wrapper architecture:** Split the CLI into `runectl` (backing implementation) and `rune()` (thin shell function wrapper). Enables shell-level operations a binary can't do (source, exec, env export) while keeping the implementation portable across shells and rewrite targets.
 
   **Architecture:**
   - `runectl` — the actual implementation. Today: shell script wrapping `just`. Later: Rust/Deno binary. Available in all shell states via PATH (set in zshenv). Handles all real work including secrets decryption.
@@ -69,11 +69,13 @@ Planned improvements and ideas for the dotfiles system.
   **Implementation phases:**
   1. **Now (shell scripts):** Rename backing to `runectl` shell script, thin `rune()` wrapper with reload mechanism, conflict detection as a comment
   2. **Rust rewrite:** `runectl` becomes compiled Rust binary (clap + inquire + ratatui), gains `init`/`shim` subcommands, multi-shell support, context-aware secrets auth.
-- [x] **Spotlight volume management** - UUID-based local config for multi-boot macOS Spotlight indexing control. Each macOS installation independently manages shared volumes via `platforms/macos/daemons/spotlight` with LaunchDaemon (`RunAtLoad` + `WatchPaths` on `/Volumes`), boot volume detection via device ID comparison, gum/plain interactive picker, and automatic boot volume safety net. Managed via `rune daemons` TUI or `rune daemons spotlight` CLI.
+- [x] **Spotlight volume management:** UUID-based local config for multi-boot macOS Spotlight indexing control. Each macOS installation independently manages shared volumes via `platforms/macos/daemons/spotlight` with LaunchDaemon (`RunAtLoad` + `WatchPaths` on `/Volumes`), boot volume detection via device ID comparison, gum/plain interactive picker, and automatic boot volume safety net. Managed via `rune daemons` TUI or `rune daemons spotlight` CLI.
 
-- [ ] **Spotlight dependency hygiene** - `mdfind` sweep during `rune upgrade` to drop `.metadata_never_index` into dependency directories (`node_modules`, `.venv`, `target/`, `build/`, `.gradle/`, `__pycache__`). Static `.metadata_never_index` for `/opt/homebrew`. No FSEvents watcher — the sweep during upgrade is sufficient.
+- [ ] **Collapse update+upgrade and manifest state tracking:** `rune update` (git pull) and `rune upgrade` (re-link + brew) are separate, so pulling a config rename leaves dangling symlinks until the user runs upgrade. Collapse into a single atomic operation. Store the last-applied manifest in `.state/manifest.applied` so the upgrade step can diff old vs new, cleaning up symlinks for entries that were removed or changed. The manifest file becomes the record of intent with no separate symlink tracking needed. First concrete case: the mise rename (`config.toml` -> `conf.d/defaults.toml`) leaves an orphan at `~/.config/mise/config.toml`. Related: "Migration runner" (Medium Priority) covers one-time scripts for breaking changes; "Dotfiles health check" covers broken symlink detection. This item covers the structural fix that prevents orphans from being created in the first place.
 
-- [ ] **Dotfiles health check** - A self-healing `rune doctor` command (like `brew doctor`) that diagnoses AND auto-fixes common issues. Should detect problems, explain what's wrong, and offer to fix them automatically.
+- [ ] **Spotlight dependency hygiene:** `mdfind` sweep during `rune upgrade` to drop `.metadata_never_index` into dependency directories (`node_modules`, `.venv`, `target/`, `build/`, `.gradle/`, `__pycache__`). Static `.metadata_never_index` for `/opt/homebrew`. No FSEvents watcher — the sweep during upgrade is sufficient.
+
+- [ ] **Dotfiles health check:** A self-healing `rune doctor` command (like `brew doctor`) that diagnoses AND auto-fixes common issues. Should detect problems, explain what's wrong, and offer to fix them automatically.
 
   **Checks and auto-fixes:**
   - Broken symlinks → re-link or remove orphans
@@ -93,7 +95,19 @@ Planned improvements and ideas for the dotfiles system.
 
 ## Medium Priority
 
-- [ ] **Global git hooks with trusted repos** - Set up global git hooks that optionally run repo-specific hooks only for trusted repos.
+- [ ] **Remove legacy config override case-statement:** Once all machines (personal + work volumes) are up-to-date with manifest-based config overrides, remove `_apply_config_overrides_legacy()` from `scripts/lib/common.sh`. The hardcoded case-statement mapping (`atuin/*`, `ghostty/*`, `ssh/*`, etc.) is only needed for bundles without a `manifest` file. Once all bundles use manifests, this dead code can go. Blocked on: all active installations running current code.
+
+- [ ] **Migration runner:** Track per-installation state via git hash in `.state/migrations/` (or similar). Each installation records the last git hash it was upgraded from, enabling automatic migration scripts that run once per breaking change. Migration scripts live in a `migrations/` directory, named by commit hash or sequence number, and execute only if the installation's last-known hash predates them. Example: renaming `~/.config/mise/config.toml` to `~/.config/mise/conf.d/defaults.toml` could be handled by a migration script that runs automatically during `rune upgrade`. The runner should be idempotent, log what it ran, and skip already-applied migrations.
+
+- [ ] **Manifest templates:** Variable substitution in manifest-linked files (inspired by chezmoi's `.tmpl` files). Would allow configs to contain `{{ .email }}` or `{{ .hostname }}` placeholders resolved at link time. Useful for gitconfig email per machine, SSH hosts, etc. Needs a data source (likely `.dotfiles.toml` or bundle vars).
+
+- [ ] **Manifest ignore patterns:** Exclude specific files/subdirectories from recursive directory linking (inspired by `.chezmoiignore`). Could use `@ignore <glob>` directives scoped to the preceding directory entry in `manifest`. Useful when a directory is mostly shared but has machine-specific files to skip.
+
+- [ ] **Manifest attributes:** Per-file permission and ownership directives beyond `@chmod` on directories (inspired by `.chezmoiattr`). Would support setting file modes, e.g., `@mode 600 ssh/config`. Currently only directory-level `@chmod` exists.
+
+- [ ] **Manifest externals:** Pull config files from external URLs during apply (inspired by `.chezmoiexternal.toml`). Would allow declaring remote resources (e.g., themes, completions) that get fetched and placed alongside local configs. Lower priority since most external resources come via Homebrew or git submodules.
+
+- [ ] **Global git hooks with trusted repos:** Set up global git hooks that optionally run repo-specific hooks only for trusted repos.
 
   **Design:**
   - Set `core.hooksPath = ~/.config/git/hooks` globally
@@ -186,25 +200,25 @@ Planned improvements and ideas for the dotfiles system.
   - Add `git-trust --revoke` to remove current secrets from `.trusted`
   - Add `git-trust-scan` command to discover repos with untrusted hooks
 
-- [ ] **Decouple scripts from dotfiles** - Extract `just` commands and scripts into standalone tools that can be invoked from anywhere without being in the dotfiles directory. Partially addressed by `rune` shell function; fully solved by the `runectl` binary architecture (see High Priority) and Rust/Deno rewrite.
+- [ ] **Decouple scripts from dotfiles:** Extract `just` commands and scripts into standalone tools that can be invoked from anywhere without being in the dotfiles directory. Partially addressed by `rune` shell function; fully solved by the `runectl` binary architecture (see High Priority) and Rust/Deno rewrite.
 
-- [ ] **Linux support** - Add `platforms/linux/` with bundles. The shared library (common.sh) and bundle system are designed to support this.
+- [ ] **Linux support:** Add `platforms/linux/` with bundles. The shared library (common.sh) and bundle system are designed to support this.
 
-- [ ] **Bundle-specific config overrides** - Utilize the `config/` directory within bundles for context-specific overrides: gitconfig (different email per bundle), SSH configs, environment variables, additional tooling, etc. Bundles that need specialized configuration beyond their Brewfile and setup.sh can layer overrides without affecting other bundles.
+- [ ] **Bundle-specific config overrides:** Utilize the `config/` directory within bundles for context-specific overrides: gitconfig (different email per bundle), SSH configs, environment variables, additional tooling, etc. Bundles that need specialized configuration beyond their Brewfile and setup.sh can layer overrides without affecting other bundles.
 
-- [ ] **Shell completions** - Add zsh completions for `rune` commands and custom scripts.
+- [ ] **Shell completions:** Add zsh completions for `rune` commands and custom scripts.
 
-- [ ] **Secrets workflow documentation** - Document the full age/sops secrets workflow: init, encrypt, decrypt, and how to add new secrets.
+- [ ] **Secrets workflow documentation:** Document the full age/sops secrets workflow: init, encrypt, decrypt, and how to add new secrets.
 
 ## Development
 
-- [x] **Brew lock for safe testing** - `rune dev lock` / `rune dev unlock` to skip Brewfile installations during upgrades while showing what would change. Respects lock during rollback with `--with-brew`.
+- [x] **Brew lock for safe testing:** `rune dev lock` / `rune dev unlock` to skip Brewfile installations during upgrades while showing what would change. Respects lock during rollback with `--with-brew`.
 
-- [x] **PR/branch preview** - `rune dev preview` for snapshot-backed preview of PRs, branches, and commits with dirty state preservation. Smart detection, auto brew lock, activity tracking with 24h stale warnings.
+- [x] **PR/branch preview:** `rune dev preview` for snapshot-backed preview of PRs, branches, and commits with dirty state preservation. Smart detection, auto brew lock, activity tracking with 24h stale warnings.
 
-- [ ] **Expandable dev locks** - Extend `rune dev lock` to support `--prefs`, `--dock`, `--all` to skip preferences, dock, or everything except symlinks/configs during testing.
+- [ ] **Expandable dev locks:** Extend `rune dev lock` to support `--prefs`, `--dock`, `--all` to skip preferences, dock, or everything except symlinks/configs during testing.
 
-- [ ] **APFS snapshot integration** - Full-system rollback for test installations (SIP disabled only). Separate repo for dangerous tooling, gated behind `rune dev init` + SIP check.
+- [ ] **APFS snapshot integration:** Full-system rollback for test installations (SIP disabled only). Separate repo for dangerous tooling, gated behind `rune dev init` + SIP check.
 
   **Design:**
   - `tmutil localsnapshot` before changes, mount + `rsync --itemize-changes` to diff, restore changed files programmatically
@@ -220,7 +234,7 @@ Planned improvements and ideas for the dotfiles system.
   - Restore via `defaults import` + service restart (`cfprefsd`, `Dock`, `Finder`, `SystemUIServer`)
   - Classify changes: `[safe]` restorable, `[sudo]` needs elevation, `[blocked]` SIP-protected
 
-- [ ] **Pre-push git hook for CI checks** - Run the same checks GitHub CI runs locally before pushing, catching errors before they require fix-up commits. On failure, prompt with `[y/N]` to push anyway (defaulting to abort).
+- [ ] **Pre-push git hook for CI checks:** Run the same checks GitHub CI runs locally before pushing, catching errors before they require fix-up commits. On failure, prompt with `[y/N]` to push anyway (defaulting to abort).
 
   **Checks to run locally (matching CI):**
   - ShellCheck (severity: warning)
@@ -238,11 +252,11 @@ Planned improvements and ideas for the dotfiles system.
 
 ## Long Term
 
-- [ ] **Rust rewrite (`runectl`)** - Rewrite `runectl` in Rust using clap + inquire + ratatui. Starts as a dispatch table (Phase 1: clap routes subcommands to existing bash scripts), adds interactive prompts (Phase 2: inquire replaces gum/bash menus), then full-screen TUI (Phase 3: ratatui for bootmenu zones, daemons TUI), then incremental logic migration (Phase 4). No intermediate language step. The `runectl` + shell wrapper architecture (see High Priority) is designed for this — `runectl` becomes the binary, `rune()` shell function stays unchanged. Gains `runectl init <shell>` for multi-shell support, `runectl shim` for non-interactive aliasing, and context-aware secrets auth.
+- [ ] **Rust rewrite (`runectl`):** Rewrite `runectl` in Rust using clap + inquire + ratatui. Starts as a dispatch table (Phase 1: clap routes subcommands to existing bash scripts), adds interactive prompts (Phase 2: inquire replaces gum/bash menus), then full-screen TUI (Phase 3: ratatui for bootmenu zones, daemons TUI), then incremental logic migration (Phase 4). No intermediate language step. The `runectl` + shell wrapper architecture (see High Priority) is designed for this — `runectl` becomes the binary, `rune()` shell function stays unchanged. Gains `runectl init <shell>` for multi-shell support, `runectl shim` for non-interactive aliasing, and context-aware secrets auth.
 
-- [ ] **Dotfiles config file** - Add `.dotfiles.toml` for user preferences and feature toggles. Gate features (secrets, cloud backup, GPG keychain import) via config so users can opt out. Built on the Rust rewrite, design the schema to support extension selection.
+- [ ] **Dotfiles config file:** Add `.dotfiles.toml` for user preferences and feature toggles. Gate features (secrets, cloud backup, GPG keychain import) via config so users can opt out. Built on the Rust rewrite, design the schema to support extension selection.
 
-- [ ] **Extension architecture** - Extensible extension system built on the Rust rewrite. Extensions are standalone executables (any language) communicating via stdin/stdout JSON protocol — same pattern as git, Docker, and Terraform.
+- [ ] **Extension architecture:** Extensible extension system built on the Rust rewrite. Extensions are standalone executables (any language) communicating via stdin/stdout JSON protocol — same pattern as git, Docker, and Terraform.
 
   **Design:**
   - Core defines capabilities (secrets, trust, cloud-backup, etc.) as trait interfaces
@@ -272,13 +286,13 @@ Planned improvements and ideas for the dotfiles system.
 
 ## Low Priority / Ideas
 
-- [ ] **Auto-generated bundle docs** - Generate documentation showing what each bundle installs (packages, configs, symlinks) for quick reference.
+- [ ] **Auto-generated bundle docs:** Generate documentation showing what each bundle installs (packages, configs, symlinks) for quick reference.
 
-- [ ] **CI on macOS runners** - Add GitHub Actions to test install.sh in a macOS VM on PRs, not just linting.
+- [ ] **CI on macOS runners:** Add GitHub Actions to test install.sh in a macOS VM on PRs, not just linting.
 
-- [ ] **Backup/sync integration** - Integrate rclone/restic for automated config backups beyond git + cloud.
+- [ ] **Backup/sync integration:** Integrate rclone/restic for automated config backups beyond git + cloud.
 
-- [ ] **Office productivity bundle** - Consolidate office tools (Word, Excel, PowerPoint) into a dedicated bundle. Currently split across personal and work bundles.
+- [ ] **Office productivity bundle:** Consolidate office tools (Word, Excel, PowerPoint) into a dedicated bundle. Currently split across personal and work bundles.
 
 ## Completed
 

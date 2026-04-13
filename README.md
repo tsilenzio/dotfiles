@@ -62,6 +62,7 @@ just rollback [id]    # Rollback to previous state
 just rollback [id] --with-brew  # Also rollback packages
 just rollback [id] --dry-run    # Preview changes
 just licenses         # Manage application licenses
+just manifest ...     # Manage config manifest (add, remove, list)
 just secrets ...      # Secrets management (init, backup, restore)
 ```
 
@@ -70,6 +71,7 @@ just secrets ...      # Secrets management (init, backup, restore)
 ```
 ~/.dotfiles/
 ├── config/                    # Base configurations
+│   ├── manifest              # Declares what gets linked where
 │   ├── ghostty/
 │   ├── git/
 │   ├── gnupg/
@@ -86,7 +88,8 @@ just secrets ...      # Secrets management (init, backup, restore)
 │       │   ├── core/
 │       │   │   ├── Brewfile
 │       │   │   ├── bundle.conf
-│       │   │   └── setup.sh
+│       │   │   ├── setup.sh
+│       │   │   └── manifest      # (optional) Config links
 │       │   ├── develop/
 │       │   ├── personal/
 │       │   ├── work/
@@ -106,6 +109,7 @@ just secrets ...      # Secrets management (init, backup, restore)
 │   ├── secrets-init           # Initialize encryption
 │   ├── licenses               # License manager (Python)
 │   ├── daemons                # Daemon/agent manager (Python)
+│   ├── manifest               # Manifest management (add/remove/list)
 │   └── platform               # Platform operations (configure/link)
 ├── secrets/                   # Encrypted secrets (age)
 ├── loaded/                    # Symlinks to active bundles (for glob discovery)
@@ -162,6 +166,19 @@ apply_config_overrides "$BUNDLE_DIR"
 
 ```bash
 chmod +x platforms/macos/bundles/mybundle/setup.sh
+```
+
+6. (Optional) Add a `manifest` file for config linking instead of hardcoding in `setup.sh`:
+
+```
+# Link individual files
+myconfig/settings.toml -> $HOME/.config/myapp/settings.toml
+
+# Link entire directories (trailing /)
+myconfig/ -> $HOME/.config/myapp/
+
+# Set directory permissions
+@chmod 700 $HOME/.config/myapp
 ```
 
 The bundle will automatically appear in the selection menu.

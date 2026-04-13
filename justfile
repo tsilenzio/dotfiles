@@ -41,6 +41,10 @@ licenses *args:
 daemons *args:
     ./scripts/daemons {{args}}
 
+# Manage config manifest (add, remove, list, chmod)
+manifest *args:
+    ./scripts/manifest {{args}}
+
 # Dev utilities for faster testing (hidden from `just --list`).
 # Uses a separate justfile + [private] recipe because:
 # - `[private]` only hides recipes, not module namespaces

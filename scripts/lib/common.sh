@@ -39,15 +39,22 @@ safe_link() {
 ## Directory Setup
 
 # Create standard config directories with proper permissions
+# Reads @chmod directives from base manifest, also ensures .config and .ssh/sockets
 ensure_config_dirs() {
     mkdir -p "$HOME/.config"
-    mkdir -p "$HOME/.config/mise"
-    mkdir -p "$HOME/.config/ghostty"
-    mkdir -p "$HOME/.config/wezterm"
     mkdir -p "$HOME/.ssh/sockets"
-    mkdir -p "$HOME/.gnupg"
-    chmod 700 "$HOME/.ssh"
-    chmod 700 "$HOME/.gnupg"
+
+    local manifest="$DOTFILES_DIR/config/manifest"
+    if [[ -f "$manifest" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Strip leading/trailing whitespace
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
+            case "$line" in
+                @chmod\ *) _apply_chmod_directive "$line" ;;
+            esac
+        done < "$manifest"
+    fi
 }
 
 ## Homebrew
@@ -78,27 +85,116 @@ install_brewfile() {
     }
 }
 
+## Manifest-Driven Config Linking
+
+# Apply a manifest file: link files, recurse directories, set permissions
+# Usage: apply_manifest <manifest_file> <source_base_dir>
+apply_manifest() {
+    local manifest="$1"
+    local base_dir="$2"
+
+    [[ ! -f "$manifest" ]] && return 0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Strip leading/trailing whitespace
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+
+        # Skip comments and blank lines
+        [[ -z "$line" || "$line" == \#* ]] && continue
+
+        # Permission directive
+        if [[ "$line" == @chmod\ * ]]; then
+            _apply_chmod_directive "$line"
+            continue
+        fi
+
+        # Parse: source -> destination
+        local src dest
+        src="${line%% ->*}"
+        dest="${line##*-> }"
+
+        # Strip whitespace from src/dest
+        src="${src%"${src##*[![:space:]]}"}"
+        dest="${dest#"${dest%%[![:space:]]*}"}"
+
+        # Expand $HOME in destination
+        dest="${dest/\$HOME/$HOME}"
+
+        # Directory linking (trailing /)
+        if [[ "$src" == */ && "$dest" == */ ]]; then
+            _link_directory "$base_dir/$src" "$dest"
+            continue
+        fi
+
+        # File linking
+        local full_src="$base_dir/$src"
+        [[ -f "$full_src" ]] && safe_link "$full_src" "$dest"
+    done < "$manifest"
+}
+
+# Recursively link all files from source directory to destination directory
+# Skips .DS_Store files
+# Usage: _link_directory <source_dir> <dest_dir>
+_link_directory() {
+    local src_dir="${1%/}"
+    local dest_dir="${2%/}"
+
+    [[ ! -d "$src_dir" ]] && return 0
+
+    while IFS= read -r -d '' file; do
+        local rel_path="${file#"$src_dir"}"
+        # Skip .DS_Store
+        local basename
+        basename=$(basename "$file")
+        [[ "$basename" == ".DS_Store" ]] && continue
+
+        safe_link "$file" "$dest_dir$rel_path"
+    done < <(find "$src_dir" -type f -print0 2>/dev/null)
+}
+
+# Parse and apply a @chmod directive
+# Usage: _apply_chmod_directive "@chmod 700 $HOME/.ssh"
+_apply_chmod_directive() {
+    local line="$1"
+    local mode path
+
+    # Strip @chmod prefix
+    line="${line#@chmod }"
+    mode="${line%% *}"
+    path="${line#* }"
+
+    # Expand $HOME
+    path="${path/\$HOME/$HOME}"
+
+    mkdir -p "$path"
+    chmod "$mode" "$path"
+}
+
 ## Config Symlinks
 
 # Link base configs from DOTFILES_DIR/config to home
 link_base_configs() {
-    local config_dir="$DOTFILES_DIR/config"
-
-    [[ -f "$config_dir/zsh/zshrc" ]] && safe_link "$config_dir/zsh/zshrc" "$HOME/.zshrc"
-    [[ -f "$config_dir/zsh/zshenv" ]] && safe_link "$config_dir/zsh/zshenv" "$HOME/.zshenv"
-    [[ -f "$config_dir/zsh/zprofile" ]] && safe_link "$config_dir/zsh/zprofile" "$HOME/.zprofile"
-    [[ -f "$config_dir/starship/starship.toml" ]] && safe_link "$config_dir/starship/starship.toml" "$HOME/.config/starship.toml"
-    [[ -f "$config_dir/git/gitconfig" ]] && safe_link "$config_dir/git/gitconfig" "$HOME/.gitconfig"
-    [[ -f "$config_dir/git/gitignore" ]] && safe_link "$config_dir/git/gitignore" "$HOME/.gitignore"
-    [[ -f "$config_dir/mise/config.toml" ]] && safe_link "$config_dir/mise/config.toml" "$HOME/.config/mise/config.toml"
-    [[ -f "$config_dir/ghostty/config" ]] && safe_link "$config_dir/ghostty/config" "$HOME/.config/ghostty/config"
-    [[ -f "$config_dir/wezterm/wezterm.lua" ]] && safe_link "$config_dir/wezterm/wezterm.lua" "$HOME/.config/wezterm/wezterm.lua"
-    [[ -f "$config_dir/ssh/config" ]] && safe_link "$config_dir/ssh/config" "$HOME/.ssh/config"
-    [[ -f "$config_dir/gnupg/gpg-agent.conf" ]] && safe_link "$config_dir/gnupg/gpg-agent.conf" "$HOME/.gnupg/gpg-agent.conf"
+    apply_manifest "$DOTFILES_DIR/config/manifest" "$DOTFILES_DIR/config"
 }
 
 # Apply bundle-specific config overrides
+# Checks for bundle manifest first, falls back to legacy case-statement
 apply_config_overrides() {
+    local bundle_dir="$1"
+
+    # Manifest-based: bundle has its own manifest file
+    if [[ -f "$bundle_dir/manifest" ]]; then
+        apply_manifest "$bundle_dir/manifest" "$DOTFILES_DIR/config"
+        return 0
+    fi
+
+    # Legacy: scan bundle config/ directory with case-statement mapping
+    _apply_config_overrides_legacy "$bundle_dir"
+}
+
+# Legacy config override logic for bundles without a manifest
+_apply_config_overrides_legacy() {
     local bundle_dir="$1"
     local config_dir="$bundle_dir/config"
 
@@ -115,6 +211,7 @@ apply_config_overrides() {
             git/gitconfig)  dest="$HOME/.gitconfig" ;;
             git/gitignore)  dest="$HOME/.gitignore" ;;
             mise/*)         dest="$HOME/.config/mise/${rel_path#mise/}" ;;
+            atuin/*)        dest="$HOME/.config/atuin/${rel_path#atuin/}" ;;
             ghostty/*)      dest="$HOME/.config/ghostty/${rel_path#ghostty/}" ;;
             wezterm/*)      dest="$HOME/.config/wezterm/${rel_path#wezterm/}" ;;
             ssh/*)          dest="$HOME/.ssh/${rel_path#ssh/}" ;;
