@@ -32,23 +32,23 @@ brew "watchman"                         # File watcher (Meta)
 # brew "duf"                            # Modern df alternative (evaluate)
 
 # Network Tools
-# brew "mtr"                            # Better traceroute/ping (evaluate)
-# brew "dog"                            # Modern dig alternative (evaluate)
-# brew "bandwhich"                      # Network bandwidth monitor (evaluate)
+brew "mtr"                              # Better traceroute/ping
+brew "dog"                              # Modern dig alternative
+brew "bandwhich"                        # Network bandwidth monitor
 
 # HTTP/API Tools
-# brew "xh"                             # Modern HTTP client (evaluate)
-# brew "curlie"                         # Curl with httpie UI (evaluate)
-# brew "httpie"                         # Human-friendly HTTP client (evaluate)
-# brew "hurl"                           # HTTP request runner (evaluate)
-# brew "oha"                            # HTTP load testing (evaluate)
+brew "xh"                               # Modern HTTP client
+brew "curlie"                           # Curl with httpie UI
+brew "httpie"                           # Human-friendly HTTP client
+brew "hurl"                             # HTTP request runner
+brew "oha"                              # HTTP load testing
 
 # Security & Secrets
 brew "pinentry-mac"                     # macOS pinentry for GPG
 tap "jorgelbg/tap"
 brew "jorgelbg/tap/pinentry-touchid"    # Touch ID for GPG passphrase
-# brew "gitleaks"                       # Scan for secrets in repos (evaluate)
-# brew "trufflehog"                     # Find secrets in git history (evaluate)
+brew "gitleaks"                         # Scan for secrets in repos
+brew "trufflehog"                       # Find secrets in git history
 
 # Development Tools
 brew "mise"                             # Version manager
@@ -58,7 +58,10 @@ brew "docker"                           # Container CLI
 brew "container"                        # Apple containerization (microVMs)
 brew "lima"                             # Linux VMs for macOS
 brew "hyperfine"                        # Command benchmarking
-# brew "tokei"                          # Code statistics (evaluate)
+brew "tokei"                            # Code statistics
+# brew "cocogitto"                      # Conventional commit linter (also in mise)
+# brew "lefthook"                       # Git hooks manager (also in mise)
+# brew "go-task"                        # Task runner (also in mise)
 
 # Database Tools
 # brew "usql"                           # Universal SQL CLI (evaluate)
@@ -74,10 +77,10 @@ brew "ctop"                             # Container monitoring
 
 # Terminal Enhancements & UI
 # brew "glow"                           # Markdown renderer (evaluate)
-# brew "moar"                           # Better pager (evaluate)
+brew "moar"                             # Better pager
 # brew "mcfly"                          # Neural shell history (evaluate)
 # brew "gum"                            # Shell script UI toolkit (evaluate)
-# brew "vhs"                            # Terminal screen recorder (evaluate)
+brew "vhs"                              # Terminal screen recorder
 # brew "charm"                          # Charm tools suite (evaluate)
 
 # Task Management
