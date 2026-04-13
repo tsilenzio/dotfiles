@@ -284,6 +284,8 @@ Planned improvements and ideas for the dotfiles system.
   - Intermediate: `.dotfiles.toml` for toggling features and selecting extensions
   - Power users: custom extensions in any language, multiple backends
 
+- [ ] **Bidirectional config sync:** Replace symlinks with a copy-and-sync model for configs that need local modification (e.g., mise, atuin). `rune sync` would detect drift in both directions (source changed in dotfiles, destination changed on machine, or both), show a diff, and offer per-file options: (a) import to dotfiles, (b) export to machine, (c) import/export then open in `$EDITOR` for cleanup before finalizing, or (d) skip. The editor option handles the common case where you want to pull changes but strip machine-specific values or noise first. Enables bundle-specific patches (like the work bundle removing global from atuin filters) without maintaining full duplicate config files. Symlinks would remain the default for configs that don't need local edits.
+
 ## Low Priority / Ideas
 
 - [ ] **Auto-generated bundle docs:** Generate documentation showing what each bundle installs (packages, configs, symlinks) for quick reference.
