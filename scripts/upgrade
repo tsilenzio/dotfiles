@@ -143,6 +143,12 @@ echo ""
 echo "Setting up loaded/ symlinks..."
 setup_loaded_symlinks "${BUNDLES[@]}"
 
+## Link personal configs from cloud storage (macOS only)
+if [[ "$OS" == "macos" ]]; then
+    echo ""
+    "$DOTFILES_DIR/scripts/cloud"
+fi
+
 ## Prompt for preferences/dock (standalone upgrade only)
 if [[ "$MANAGED" != true && "$DOTFILES_MODE" == "upgrade" ]]; then
     PLATFORM_DIR="$DOTFILES_DIR/platforms/$OS"

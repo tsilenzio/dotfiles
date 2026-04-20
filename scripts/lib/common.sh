@@ -103,9 +103,13 @@ apply_manifest() {
         # Skip comments and blank lines
         [[ -z "$line" || "$line" == \#* ]] && continue
 
-        # Permission directive
+        # Directives
         if [[ "$line" == @chmod\ * ]]; then
             _apply_chmod_directive "$line"
+            continue
+        fi
+        if [[ "$line" == @merge\ * || "$line" == @defaults\ * ]]; then
+            _apply_merge_directive "$line" "$base_dir"
             continue
         fi
 
@@ -169,6 +173,66 @@ _apply_chmod_directive() {
 
     mkdir -p "$path"
     chmod "$mode" "$path"
+}
+
+# Parse and apply a @merge or @defaults directive
+# @merge: deep merge, dotfiles values override existing keys
+# @defaults: only add keys not already present in target
+# Usage: _apply_merge_directive "@merge source -> dest" <base_dir>
+_apply_merge_directive() {
+    local line="$1"
+    local base_dir="$2"
+    local mode
+
+    if [[ "$line" == @merge\ * ]]; then
+        mode="override"
+        line="${line#@merge }"
+    else
+        mode="defaults"
+        line="${line#@defaults }"
+    fi
+
+    local src dest
+    src="${line%% ->*}"
+    dest="${line##*-> }"
+
+    src="${src%"${src##*[![:space:]]}"}"
+    dest="${dest#"${dest%%[![:space:]]*}"}"
+    dest="${dest/\$HOME/$HOME}"
+
+    local full_src="$base_dir/$src"
+
+    if [[ ! -f "$full_src" ]]; then
+        return 0
+    fi
+
+    if ! command -v jq &>/dev/null; then
+        echo "  ⚠ jq not found, skipping merge for $dest"
+        return 0
+    fi
+
+    if [[ ! -f "$dest" ]]; then
+        mkdir -p "$(dirname "$dest")"
+        cp "$full_src" "$dest"
+        echo "  ✓ $dest (created)"
+        return 0
+    fi
+
+    local merged
+    if [[ "$mode" == "override" ]]; then
+        # Target * Source: source keys win
+        merged=$(jq -s '.[0] * .[1]' "$dest" "$full_src" 2>/dev/null)
+    else
+        # Source * Target: existing keys win
+        merged=$(jq -s '.[0] * .[1]' "$full_src" "$dest" 2>/dev/null)
+    fi
+
+    if [[ -n "$merged" ]]; then
+        echo "$merged" > "$dest"
+        echo "  ✓ $dest (merged, mode: $mode)"
+    else
+        echo "  ⚠ Failed to merge $dest, skipping"
+    fi
 }
 
 ## Config Symlinks
@@ -465,6 +529,104 @@ log_info()    { echo -e "${_BLUE}[info]${_NC} $1"; }
 log_success() { echo -e "${_GREEN}[ok]${_NC} $1"; }
 log_warn()    { echo -e "${_YELLOW}[warn]${_NC} $1"; }
 log_error()   { echo -e "${_RED}[error]${_NC} $1"; }
+
+## Cloud Storage
+
+CLOUD_DOTFILES_SUBDIR=".dotfiles"
+
+# Discover available cloud storage roots (checked in priority order)
+get_cloud_roots() {
+    local roots=()
+
+    # Dropbox
+    [[ -d "$HOME/Dropbox" ]] && roots+=("$HOME/Dropbox")
+
+    # Google Drive (new location)
+    for dir in "$HOME/Library/CloudStorage"/GoogleDrive-*/; do
+        [[ -d "${dir}My Drive" ]] && roots+=("${dir}My Drive")
+    done
+    # Google Drive (legacy location)
+    [[ -d "$HOME/Google Drive" ]] && roots+=("$HOME/Google Drive")
+
+    # OneDrive (new location)
+    for dir in "$HOME/Library/CloudStorage"/OneDrive-*/; do
+        [[ -d "$dir" ]] && roots+=("${dir%/}")
+    done
+    # OneDrive (legacy location)
+    [[ -d "$HOME/OneDrive" ]] && roots+=("$HOME/OneDrive")
+
+    # iCloud (last)
+    [[ -d "$HOME/Library/Mobile Documents/com~apple~CloudDocs" ]] && \
+        roots+=("$HOME/Library/Mobile Documents/com~apple~CloudDocs")
+
+    printf '%s\n' "${roots[@]}"
+}
+
+# Expand shorthand cloud provider names to full paths
+expand_cloud_shorthand() {
+    local input="$1"
+
+    case "$input" in
+        icloud)
+            echo "$HOME/Library/Mobile Documents/com~apple~CloudDocs"
+            ;;
+        dropbox)
+            echo "$HOME/Dropbox"
+            ;;
+        gdrive|google)
+            for dir in "$HOME/Library/CloudStorage"/GoogleDrive-*/; do
+                if [[ -d "${dir}My Drive" ]]; then
+                    echo "${dir}My Drive"
+                    return 0
+                fi
+            done
+            [[ -d "$HOME/Google Drive" ]] && echo "$HOME/Google Drive" && return 0
+            echo "$input"
+            ;;
+        onedrive)
+            for dir in "$HOME/Library/CloudStorage"/OneDrive-*/; do
+                if [[ -d "$dir" ]]; then
+                    echo "${dir%/}"
+                    return 0
+                fi
+            done
+            [[ -d "$HOME/OneDrive" ]] && echo "$HOME/OneDrive" && return 0
+            echo "$input"
+            ;;
+        *)
+            echo "$input"
+            ;;
+    esac
+}
+
+# Show available cloud shorthands
+show_cloud_shorthands() {
+    echo "Available shorthands:"
+    echo "  icloud   → iCloud Drive"
+    echo "  dropbox  → Dropbox"
+    echo "  gdrive   → Google Drive"
+    echo "  onedrive → OneDrive"
+    echo ""
+    echo "Or specify a custom path directly."
+}
+
+# Find the cloud .dotfiles directory
+# Usage: find_cloud_dir
+find_cloud_dir() {
+    local roots
+    roots=$(get_cloud_roots)
+
+    while IFS= read -r root; do
+        [[ -z "$root" ]] && continue
+        local cloud_dir="$root/$CLOUD_DOTFILES_SUBDIR"
+        if [[ -d "$cloud_dir" ]]; then
+            echo "$cloud_dir"
+            return 0
+        fi
+    done <<< "$roots"
+
+    return 1
+}
 
 ## Platform Detection
 

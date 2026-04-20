@@ -26,6 +26,11 @@ wezterm/wezterm.lua -> $HOME/.config/wezterm/wezterm.lua
 ssh/config -> $HOME/.ssh/config
 @chmod 700 $HOME/.ssh
 
+# Claude Code
+claude/CLAUDE.md -> $HOME/.claude/CLAUDE.md
+claude/statusline-command.sh -> $HOME/.claude/statusline-command.sh
+@defaults claude/settings.json -> $HOME/.claude/settings.json
+
 # GnuPG
 gnupg/gpg-agent.conf -> $HOME/.gnupg/gpg-agent.conf
 @chmod 700 $HOME/.gnupg
