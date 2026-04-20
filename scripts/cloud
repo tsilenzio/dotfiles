@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# Link personal configs from cloud storage
+#
+# Syncs files from the cloud-backed .dotfiles directory to their
+# expected local paths. Idempotent: safe to run on every install/upgrade.
+#
+# Environment variables:
+#   DOTFILES_DIR  - Root dotfiles directory (auto-detected if unset)
+
+set -e
+
+DOTFILES_DIR="${DOTFILES_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+source "$DOTFILES_DIR/scripts/lib/common.sh"
+
+# Map cloud-backed files to their local destinations.
+# Add new mappings here as needed.
+link_cloud_configs() {
+    local cloud_dir="$1"
+
+    safe_link "$cloud_dir/claude/preferences.md" "$HOME/.claude/preferences.md"
+}
+
+## Main
+
+main() {
+    local cloud_dir
+
+    if ! cloud_dir=$(find_cloud_dir); then
+        echo "  No cloud storage found, skipping personal configs"
+        return 0
+    fi
+
+    echo "Linking personal configs from cloud storage..."
+    link_cloud_configs "$cloud_dir"
+}
+
+main "$@"

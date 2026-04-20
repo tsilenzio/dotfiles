@@ -23,11 +23,12 @@ tmp/
 .tmp/
 
 # Internal documentation
-.docs/
+.docs
 
 # AI agent configs (ignored when untracked, no effect when tracked)
 AGENTS.md
 CLAUDE.md
+.claude/
 .cursorrules
 .cursor/
 .windsurfrules
