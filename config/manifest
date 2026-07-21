@@ -28,6 +28,7 @@ ssh/config -> $HOME/.ssh/config
 
 # Claude Code
 claude/CLAUDE.md -> $HOME/.claude/CLAUDE.md
+claude/CHANGES.md -> $HOME/.claude/CHANGES.md
 claude/statusline-command.sh -> $HOME/.claude/statusline-command.sh
 @defaults claude/settings.json -> $HOME/.claude/settings.json
 

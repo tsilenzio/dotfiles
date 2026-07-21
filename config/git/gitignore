@@ -24,6 +24,7 @@ tmp/
 
 # Internal documentation
 .docs
+.engrata
 
 # AI agent configs (ignored when untracked, no effect when tracked)
 AGENTS.md
