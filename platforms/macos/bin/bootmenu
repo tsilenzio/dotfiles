@@ -3,8 +3,6 @@
 
 Reads an encrypted TOML config, evaluates rules, presents a section-based
 menu, and reboots into the selected volume.
-
-See .docs/bootmenu.md for the full specification.
 """
 
 import curses
